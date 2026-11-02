@@ -100,6 +100,7 @@ class ImportRepositoryImpl(
         var insertedCount = 0
         var exactDuplicatesIgnored = 0
         var possibleDuplicatesMarked = 0
+        val duplicateDetails = mutableListOf<String>()
         val errors = mutableListOf<String>()
 
         val rowsToProcess = rows.drop(mapping.skipHeaderRows.coerceAtLeast(0))
@@ -238,10 +239,7 @@ class ImportRepositoryImpl(
 
                 // 4. Verificar duplicado exacto en la cuenta
                 val exactMatch = transactionDao.findByNormalizedHash(accountId, hash)
-                if (exactMatch != null) {
-                    exactDuplicatesIgnored++
-                    continue
-                }
+                val isExactDuplicate = exactMatch != null
 
                 // 5. Categorización automática sugerida
                 val categoryId = inferCategory(concept, allCategories)
@@ -270,7 +268,27 @@ class ImportRepositoryImpl(
                     notes = if (rawDetails.isNotBlank()) rawDetails else null
                 )
 
-                val isFuzzy = DeduplicationEngine.isFuzzyDuplicate(candidateTx, existingTxs)
+                val isFuzzy = if (!isExactDuplicate) DeduplicationEngine.isFuzzyDuplicate(candidateTx, existingTxs) else false
+                val isDuplicate = isExactDuplicate || isFuzzy
+
+                val finalHash = if (isExactDuplicate) {
+                    "${hash}_dup_${System.currentTimeMillis()}_$rowNum"
+                } else {
+                    hash
+                }
+
+                val finalNotes = when {
+                    isExactDuplicate -> {
+                        val baseNote = "Fila $rowNum: Coincide exactamente con apunte existente de fecha $opDate"
+                        if (rawDetails.isNotBlank()) "$baseNote | $rawDetails" else baseNote
+                    }
+                    isFuzzy -> {
+                        val baseNote = "Fila $rowNum: Posible duplicado difuso"
+                        if (rawDetails.isNotBlank()) "$baseNote | $rawDetails" else baseNote
+                    }
+                    rawDetails.isNotBlank() -> rawDetails
+                    else -> null
+                }
 
                 val txEntity = TransactionEntity(
                     accountId = accountId,
@@ -280,27 +298,30 @@ class ImportRepositoryImpl(
                     amount = amount,
                     balance = balance,
                     currency = account.currency,
-                    normalizedHash = hash,
+                    normalizedHash = finalHash,
                     sourceFileId = sourceFileId,
                     importBatchId = batchId,
-                    isPossibleDuplicate = isFuzzy,
-                    reviewStatus = if (isFuzzy) ReviewStatus.PENDING_REVIEW else ReviewStatus.CONFIRMED,
+                    isPossibleDuplicate = isDuplicate,
+                    reviewStatus = if (isDuplicate) ReviewStatus.PENDING_REVIEW else ReviewStatus.CONFIRMED,
                     categoryId = categoryId,
                     isExcludedFromTotals = isSettlementTx,
                     isCreditCard = isCreditCardTx,
-                    notes = if (rawDetails.isNotBlank()) rawDetails else null
+                    notes = finalNotes
                 )
 
                 val insertId = transactionDao.insertTransaction(txEntity)
                 if (insertId > 0) {
-                    if (isFuzzy) {
+                    if (isDuplicate) {
                         possibleDuplicatesMarked++
+                        val amountStr = (if (amount >= java.math.BigDecimal.ZERO) "+" else "") + "${amount.toPlainString()} ${account.currency}"
+                        val reason = if (isExactDuplicate) "Duplicado idéntico" else "Posible duplicado"
+                        duplicateDetails.add("Fila $rowNum: $opDate | $concept | $amountStr ($reason)")
                     } else {
                         insertedCount++
                     }
                 } else {
-                    // Conflicto de unicidad en BD
                     exactDuplicatesIgnored++
+                    duplicateDetails.add("Fila $rowNum: $opDate | $concept | ${amount.toPlainString()} ${account.currency} (Omitido)")
                 }
 
             } catch (e: Exception) {
@@ -327,6 +348,7 @@ class ImportRepositoryImpl(
             insertedCount = insertedCount,
             exactDuplicatesIgnored = exactDuplicatesIgnored,
             possibleDuplicatesMarked = possibleDuplicatesMarked,
+            duplicateDetails = duplicateDetails,
             errors = errors
         )
     }

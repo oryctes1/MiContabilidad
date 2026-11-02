@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -1065,10 +1066,45 @@ fun ImportResultStep(
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 StatRow("Total filas analizadas", "${result.totalProcessed}")
                 StatRow("Movimientos nuevos insertados", "+${result.insertedCount}", color = IncomeGreen)
-                StatRow("Duplicados exactos ignorados", "${result.exactDuplicatesIgnored}", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                StatRow("Posibles duplicados para revisión", "${result.possibleDuplicatesMarked}", color = WarningOrange)
+                if (result.possibleDuplicatesMarked > 0) {
+                    StatRow("Duplicados marcados para revisión", "${result.possibleDuplicatesMarked}", color = WarningOrange)
+                }
+                if (result.exactDuplicatesIgnored > 0) {
+                    StatRow("Duplicados omitidos", "${result.exactDuplicatesIgnored}", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
                 if (result.errors.isNotEmpty()) {
                     StatRow("Filas con error de formato", "${result.errors.size}", color = ExpenseRed)
+                }
+            }
+        }
+
+        if (result.duplicateDetails.isNotEmpty()) {
+            Text(
+                text = "Detalle de movimientos duplicados (guardados para revisión):",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                color = WarningOrange
+            )
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.15f)
+                )
+            ) {
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 130.dp)
+                        .padding(10.dp)
+                ) {
+                    items(result.duplicateDetails) { dup ->
+                        Text(
+                            text = "• $dup",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.padding(vertical = 2.dp)
+                        )
+                    }
                 }
             }
         }
@@ -1079,14 +1115,26 @@ fun ImportResultStep(
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.Bold
             )
-            LazyColumn(modifier = Modifier.height(140.dp)) {
-                items(result.errors) { err ->
-                    Text(
-                        text = "• $err",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = ExpenseRed,
-                        modifier = Modifier.padding(vertical = 2.dp)
-                    )
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.2f)
+                )
+            ) {
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 130.dp)
+                        .padding(10.dp)
+                ) {
+                    items(result.errors) { err ->
+                        Text(
+                            text = "• $err",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = ExpenseRed,
+                            modifier = Modifier.padding(vertical = 2.dp)
+                        )
+                    }
                 }
             }
         }

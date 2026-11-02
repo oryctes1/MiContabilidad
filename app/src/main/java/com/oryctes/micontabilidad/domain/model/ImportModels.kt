@@ -30,5 +30,6 @@ data class ImportResult(
     val insertedCount: Int,
     val exactDuplicatesIgnored: Int,
     val possibleDuplicatesMarked: Int,
+    val duplicateDetails: List<String> = emptyList(),
     val errors: List<String> = emptyList()
 )
