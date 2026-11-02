@@ -1,0 +1,997 @@
+package com.oryctes.micontabilidad.ui.transactions
+
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountBalance
+import androidx.compose.material.icons.filled.ArrowDownward
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.CreditCard
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DeleteForever
+import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.DeleteSweep
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedCard
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import com.oryctes.micontabilidad.domain.model.ReviewStatus
+import com.oryctes.micontabilidad.domain.model.Transaction
+import com.oryctes.micontabilidad.ui.components.EmptyState
+import com.oryctes.micontabilidad.ui.theme.ExpenseRed
+import com.oryctes.micontabilidad.ui.theme.IncomeGreen
+import com.oryctes.micontabilidad.ui.theme.WarningOrange
+import org.koin.androidx.compose.koinViewModel
+import java.math.BigDecimal
+
+enum class DeleteTarget {
+    ALL,
+    BY_CATEGORY,
+    BY_ACCOUNT
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun TransactionsScreen(
+    viewModel: TransactionsViewModel = koinViewModel()
+) {
+    val uiState by viewModel.uiState.collectAsState()
+    var showDeleteDialog by remember { mutableStateOf(false) }
+
+    val categoryMap = remember(uiState.categories) {
+        uiState.categories.associateBy { it.id }
+    }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Movimientos", fontWeight = FontWeight.Bold) },
+                actions = {
+                    // Icono para borrar movimientos por categoría o todos juntos
+                    IconButton(
+                        onClick = { showDeleteDialog = true }
+                    ) {
+                        Icon(
+                            Icons.Default.DeleteSweep,
+                            contentDescription = "Borrar movimientos",
+                            tint = MaterialTheme.colorScheme.error
+                        )
+                    }
+                }
+            )
+        }
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+        ) {
+            // Buscador por texto
+            OutlinedTextField(
+                value = uiState.filterState.searchQuery,
+                onValueChange = { viewModel.onSearchQueryChange(it) },
+                placeholder = { Text("Buscar por concepto...") },
+                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                singleLine = true,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 4.dp)
+            )
+
+            // Filtros rápidos de Tipo (Todos / Ingresos / Gastos) y Cuentas
+            LazyRow(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 2.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(TransactionTypeFilter.entries) { type ->
+                    FilterChip(
+                        selected = uiState.filterState.typeFilter == type,
+                        onClick = { viewModel.onTypeFilterChange(type) },
+                        label = { Text(type.title) },
+                        leadingIcon = if (type == TransactionTypeFilter.CREDIT_CARD) {
+                            {
+                                Icon(
+                                    Icons.Default.CreditCard,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        } else null
+                    )
+                }
+
+                // Chips para filtrar por cuenta (ING Cuenta, etc.)
+                items(uiState.accounts) { account ->
+                    FilterChip(
+                        selected = uiState.filterState.selectedAccountId == account.id,
+                        onClick = {
+                            val newId = if (uiState.filterState.selectedAccountId == account.id) null else account.id
+                            viewModel.onAccountFilterChange(newId)
+                        },
+                        label = { Text(account.alias) },
+                        leadingIcon = {
+                            Icon(
+                                Icons.Default.AccountBalance,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    )
+                }
+            }
+
+            // Filtros rápidos por Categoría (Todas / Hogar / Nómina / Supermercado / etc.)
+            if (uiState.categories.isNotEmpty()) {
+                LazyRow(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 2.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    item {
+                        FilterChip(
+                            selected = uiState.filterState.selectedCategoryId == null,
+                            onClick = { viewModel.onCategoryFilterChange(null) },
+                            label = { Text("Todas las categorías") }
+                        )
+                    }
+
+                    items(uiState.categories) { category ->
+                        FilterChip(
+                            selected = uiState.filterState.selectedCategoryId == category.id,
+                            onClick = {
+                                val newId = if (uiState.filterState.selectedCategoryId == category.id) null else category.id
+                                viewModel.onCategoryFilterChange(newId)
+                            },
+                            label = { Text(category.name) }
+                        )
+                    }
+                }
+            }
+
+            // Tarjeta de resumen de totales para la categoría/cuenta seleccionada
+            TransactionsSummaryCard(
+                summary = uiState.summary,
+                onDeleteClick = { showDeleteDialog = true },
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+            )
+
+            // Lista de movimientos o Estado vacío
+            if (uiState.transactions.isEmpty()) {
+                EmptyState(
+                    title = "Sin movimientos",
+                    message = "No se encontraron movimientos con los filtros actuales."
+                )
+            } else {
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(uiState.transactions, key = { it.id }) { tx ->
+                        val categoryName = tx.categoryId?.let { categoryMap[it]?.name }
+                        TransactionItemCard(
+                            transaction = tx,
+                            categoryName = categoryName,
+                            onClick = { viewModel.selectTransaction(tx) },
+                            onConfirmDuplicate = { viewModel.updateReviewStatus(tx, ReviewStatus.CONFIRMED) },
+                            onDiscardDuplicate = { viewModel.discardDuplicate(tx) }
+                        )
+                    }
+                }
+            }
+        }
+
+        // Diálogo para borrar movimientos (con confirmación por categoría o todos juntos)
+        if (showDeleteDialog) {
+            DeleteTransactionsDialog(
+                uiState = uiState,
+                onDismiss = { showDeleteDialog = false },
+                onDeleteAll = { viewModel.deleteAllTransactions() },
+                onDeleteCategory = { categoryId -> viewModel.deleteTransactionsByCategory(categoryId) },
+                onDeleteAccount = { accountId -> viewModel.deleteTransactionsByAccount(accountId) }
+            )
+        }
+
+        // Diálogo de detalle de transacción
+        uiState.selectedTransaction?.let { tx ->
+            val catName = tx.categoryId?.let { categoryMap[it]?.name }
+            TransactionDetailDialog(
+                transaction = tx,
+                categoryName = catName,
+                onDismiss = { viewModel.selectTransaction(null) },
+                onDelete = {
+                    viewModel.deleteTransaction(tx)
+                },
+                onToggleCreditCard = {
+                    viewModel.toggleCreditCard(tx)
+                },
+                onToggleExclude = {
+                    viewModel.toggleExcludeFromTotals(tx)
+                }
+            )
+        }
+    }
+}
+
+@Composable
+fun TransactionsSummaryCard(
+    summary: TransactionsSummaryState,
+    onDeleteClick: (() -> Unit)? = null,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+        ),
+        shape = RoundedCornerShape(16.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp)
+        ) {
+            // Fila de contexto y balance neto
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = summary.contextTitle,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = summary.contextSubtitle,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    if (onDeleteClick != null && summary.totalCount > 0) {
+                        IconButton(
+                            onClick = onDeleteClick,
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.DeleteOutline,
+                                contentDescription = "Borrar movimientos",
+                                tint = MaterialTheme.colorScheme.error.copy(alpha = 0.8f),
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+                }
+
+                val isPositive = summary.netTotal >= BigDecimal.ZERO
+                Column(horizontalAlignment = Alignment.End) {
+                    Text(
+                        text = "Total Neto",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = (if (isPositive) "+" else "") + "${summary.netTotal.toPlainString()} €",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = if (isPositive) IncomeGreen else ExpenseRed
+                    )
+                }
+            }
+
+            HorizontalDivider(
+                modifier = Modifier.padding(vertical = 10.dp),
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+            )
+
+            // Fila de Ingresos y Gastos
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                // Ingresos
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.Default.ArrowUpward,
+                        contentDescription = null,
+                        tint = IncomeGreen,
+                        modifier = Modifier
+                            .size(20.dp)
+                            .padding(end = 4.dp)
+                    )
+                    Column {
+                        Text(
+                            text = "Ingresos",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = "+${summary.totalIncome.toPlainString()} €",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = IncomeGreen
+                        )
+                    }
+                }
+
+                // Gastos
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.Default.ArrowDownward,
+                        contentDescription = null,
+                        tint = ExpenseRed,
+                        modifier = Modifier
+                            .size(20.dp)
+                            .padding(end = 4.dp)
+                    )
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text(
+                            text = "Gastos",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = "-${summary.totalExpense.toPlainString()} €",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = ExpenseRed
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun DeleteTransactionsDialog(
+    uiState: TransactionsUiState,
+    onDismiss: () -> Unit,
+    onDeleteAll: () -> Unit,
+    onDeleteCategory: (Long) -> Unit,
+    onDeleteAccount: (Long) -> Unit
+) {
+    val initialTarget = when {
+        uiState.filterState.selectedCategoryId != null -> DeleteTarget.BY_CATEGORY
+        uiState.filterState.selectedAccountId != null -> DeleteTarget.BY_ACCOUNT
+        else -> DeleteTarget.ALL
+    }
+
+    var selectedTarget by remember { mutableStateOf(initialTarget) }
+    var chosenCategoryId by remember {
+        mutableStateOf(uiState.filterState.selectedCategoryId ?: uiState.categories.firstOrNull()?.id ?: 0L)
+    }
+    var chosenAccountId by remember {
+        mutableStateOf(uiState.filterState.selectedAccountId ?: uiState.accounts.firstOrNull()?.id ?: 0L)
+    }
+    var categoryDropdownExpanded by remember { mutableStateOf(false) }
+    var accountDropdownExpanded by remember { mutableStateOf(false) }
+
+    val currentCategory = uiState.categories.find { it.id == chosenCategoryId }
+    val currentAccount = uiState.accounts.find { it.id == chosenAccountId }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = {
+            Icon(
+                Icons.Default.DeleteForever,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.error,
+                modifier = Modifier.size(32.dp)
+            )
+        },
+        title = {
+            Text(
+                text = "Borrar movimientos",
+                fontWeight = FontWeight.Bold
+            )
+        },
+        text = {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text(
+                    text = "Selecciona el alcance del borrado para empezar desde cero o limpiar una categoría:",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+
+                // Opción 1: Todos los movimientos (Empezar desde cero)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { selectedTarget = DeleteTarget.ALL }
+                        .padding(vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    RadioButton(
+                        selected = selectedTarget == DeleteTarget.ALL,
+                        onClick = { selectedTarget = DeleteTarget.ALL }
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Column {
+                        Text(
+                            text = "Todos los movimientos",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            text = "Borra toda la contabilidad y lotes para reimportar desde cero",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                // Opción 2: Por categoría
+                if (uiState.categories.isNotEmpty()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { selectedTarget = DeleteTarget.BY_CATEGORY }
+                            .padding(vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(
+                            selected = selectedTarget == DeleteTarget.BY_CATEGORY,
+                            onClick = { selectedTarget = DeleteTarget.BY_CATEGORY }
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Column {
+                            Text(
+                                text = "Por categoría",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                text = "Borra únicamente los movimientos de la categoría seleccionada",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    if (selectedTarget == DeleteTarget.BY_CATEGORY) {
+                        Box(modifier = Modifier.padding(start = 48.dp, end = 8.dp)) {
+                            OutlinedCard(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { categoryDropdownExpanded = true }
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(12.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = currentCategory?.name ?: "Seleccionar categoría",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                    Icon(Icons.Default.ArrowDropDown, contentDescription = null)
+                                }
+                            }
+
+                            DropdownMenu(
+                                expanded = categoryDropdownExpanded,
+                                onDismissRequest = { categoryDropdownExpanded = false }
+                            ) {
+                                uiState.categories.forEach { cat ->
+                                    DropdownMenuItem(
+                                        text = { Text(cat.name) },
+                                        onClick = {
+                                            chosenCategoryId = cat.id
+                                            categoryDropdownExpanded = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Opción 3: Por cuenta bancaria
+                if (uiState.accounts.isNotEmpty()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { selectedTarget = DeleteTarget.BY_ACCOUNT }
+                            .padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(
+                            selected = selectedTarget == DeleteTarget.BY_ACCOUNT,
+                            onClick = { selectedTarget = DeleteTarget.BY_ACCOUNT }
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Column {
+                            Text(
+                                text = "Por cuenta bancaria",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                text = "Borra todos los movimientos de la cuenta seleccionada",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    if (selectedTarget == DeleteTarget.BY_ACCOUNT) {
+                        Box(modifier = Modifier.padding(start = 48.dp, end = 8.dp)) {
+                            OutlinedCard(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { accountDropdownExpanded = true }
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(12.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = currentAccount?.alias ?: "Seleccionar cuenta",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                    Icon(Icons.Default.ArrowDropDown, contentDescription = null)
+                                }
+                            }
+
+                            DropdownMenu(
+                                expanded = accountDropdownExpanded,
+                                onDismissRequest = { accountDropdownExpanded = false }
+                            ) {
+                                uiState.accounts.forEach { acc ->
+                                    DropdownMenuItem(
+                                        text = { Text(acc.alias) },
+                                        onClick = {
+                                            chosenAccountId = acc.id
+                                            accountDropdownExpanded = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                HorizontalDivider(
+                    modifier = Modifier.padding(vertical = 4.dp),
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                )
+
+                Text(
+                    text = "⚠️ Esta acción eliminará permanentemente los datos y no se puede deshacer.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    when (selectedTarget) {
+                        DeleteTarget.ALL -> onDeleteAll()
+                        DeleteTarget.BY_CATEGORY -> onDeleteCategory(chosenCategoryId)
+                        DeleteTarget.BY_ACCOUNT -> onDeleteAccount(chosenAccountId)
+                    }
+                    onDismiss()
+                },
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.error,
+                    contentColor = MaterialTheme.colorScheme.onError
+                )
+            ) {
+                Text("Borrar definitivamente")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancelar")
+            }
+        }
+    )
+}
+
+@Composable
+fun TransactionItemCard(
+    transaction: Transaction,
+    categoryName: String? = null,
+    onClick: () -> Unit,
+    onConfirmDuplicate: () -> Unit,
+    onDiscardDuplicate: () -> Unit
+) {
+    val isPendingReview = transaction.reviewStatus == ReviewStatus.PENDING_REVIEW
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isPendingReview)
+                MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.2f)
+            else
+                MaterialTheme.colorScheme.surface
+        )
+    ) {
+        Column(modifier = Modifier.padding(14.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Fechas
+                Text(
+                    text = "Op: ${transaction.operationDate}" + (transaction.valueDate?.let { " • Val: $it" } ?: ""),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                // Saldo
+                if (transaction.balance != null) {
+                    Text(
+                        text = "Saldo: ${transaction.balance.toPlainString()} ${transaction.currency}",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(6.dp))
+
+            // Fila de Concepto (izquierda) e Importe (derecha)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.Top
+            ) {
+                Text(
+                    text = transaction.concept,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f),
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis
+                )
+
+                Spacer(modifier = Modifier.width(12.dp))
+
+                // Cuantía
+                val isPositive = transaction.amount >= BigDecimal.ZERO
+                val isExcluded = transaction.isExcludedFromTotals
+
+                Column(horizontalAlignment = Alignment.End) {
+                    Text(
+                        text = (if (isPositive) "+" else "") + "${transaction.amount.toPlainString()} ${transaction.currency}",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = when {
+                            isExcluded -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                            isPositive -> IncomeGreen
+                            else -> ExpenseRed
+                        }
+                    )
+                    if (isExcluded) {
+                        Text(
+                            text = "No computa",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                        )
+                    }
+                }
+            }
+
+            // Fila de Badges (Tarjeta, Cargo mensual, Categoría) usando FlowRow para no comprimir el texto
+            val hasBadges = transaction.isCreditCard || transaction.isExcludedFromTotals || categoryName != null
+            if (hasBadges) {
+                Spacer(modifier = Modifier.height(6.dp))
+                @OptIn(ExperimentalLayoutApi::class)
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    // Badge de Tarjeta de crédito
+                    if (transaction.isCreditCard) {
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = MaterialTheme.colorScheme.tertiaryContainer
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.CreditCard,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onTertiaryContainer,
+                                    modifier = Modifier.size(12.dp)
+                                )
+                                Spacer(modifier = Modifier.width(3.dp))
+                                Text(
+                                    text = "Tarjeta",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onTertiaryContainer,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
+
+                    // Badge si es cargo mensual que no computa en gastos
+                    if (transaction.isExcludedFromTotals) {
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.Sync,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(12.dp)
+                                )
+                                Spacer(modifier = Modifier.width(3.dp))
+                                Text(
+                                    text = "Cargo mensual (no computa)",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                        }
+                    }
+
+                    // Badge de categoría si existe
+                    if (categoryName != null) {
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.6f)
+                        ) {
+                            Text(
+                                text = categoryName,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Alerta si es posible duplicado
+            if (isPendingReview) {
+                Spacer(modifier = Modifier.height(10.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            Icons.Default.Warning,
+                            contentDescription = null,
+                            tint = WarningOrange,
+                            modifier = Modifier.padding(end = 4.dp)
+                        )
+                        Text(
+                            text = "Posible duplicado",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = WarningOrange,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    Row {
+                        AssistChip(
+                            onClick = onConfirmDuplicate,
+                            label = { Text("Aceptar") },
+                            leadingIcon = { Icon(Icons.Default.Check, contentDescription = null) }
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        AssistChip(
+                            onClick = onDiscardDuplicate,
+                            label = { Text("Descartar") },
+                            leadingIcon = { Icon(Icons.Default.Close, contentDescription = null) }
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun TransactionDetailDialog(
+    transaction: Transaction,
+    categoryName: String? = null,
+    onDismiss: () -> Unit,
+    onDelete: () -> Unit,
+    onToggleCreditCard: () -> Unit,
+    onToggleExclude: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Detalle del Movimiento", fontWeight = FontWeight.Bold) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                DetailRow(label = "Concepto", value = transaction.concept)
+                if (categoryName != null) {
+                    DetailRow(label = "Categoría", value = categoryName)
+                }
+                DetailRow(label = "Fecha Operación", value = transaction.operationDate.toString())
+                transaction.valueDate?.let { DetailRow(label = "Fecha Valor", value = it.toString()) }
+                DetailRow(label = "Cuantía", value = "${transaction.amount.toPlainString()} ${transaction.currency}")
+                transaction.balance?.let { DetailRow(label = "Saldo", value = "${it.toPlainString()} ${transaction.currency}") }
+                DetailRow(label = "Estado de revisión", value = transaction.reviewStatus.name)
+
+                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+
+                // Control: Movimiento de tarjeta
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onToggleCreditCard() },
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Movimiento de tarjeta",
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            text = "Marca el apunte con la etiqueta de tarjeta",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = transaction.isCreditCard,
+                        onCheckedChange = { onToggleCreditCard() }
+                    )
+                }
+
+                // Control: Excluir de totales (doble cómputo)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onToggleExclude() },
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Excluir de totales",
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            text = "Muestra el movimiento pero no lo suma en gastos para evitar doble cómputo",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = transaction.isExcludedFromTotals,
+                        onCheckedChange = { onToggleExclude() }
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "Metadatos Técnicos",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                DetailRow(label = "ID Transacción", value = transaction.id.toString())
+                DetailRow(label = "ID Cuenta", value = transaction.accountId.toString())
+                transaction.importBatchId?.let { DetailRow(label = "Lote de importación", value = it.toString()) }
+                DetailRow(label = "Hash SHA-256", value = transaction.normalizedHash.take(16) + "...")
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cerrar")
+            }
+        },
+        dismissButton = {
+            IconButton(onClick = onDelete) {
+                Icon(Icons.Default.Delete, contentDescription = "Eliminar", tint = MaterialTheme.colorScheme.error)
+            }
+        }
+    )
+}
+
+@Composable
+fun DetailRow(label: String, value: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodySmall,
+            fontWeight = FontWeight.Medium
+        )
+    }
+}
