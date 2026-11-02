@@ -141,9 +141,10 @@ class ImportViewModel(
                     detectedAccountInfo = detected,
                     step = ImportStep.MAPPING_PREVIEW
                 )
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
+                android.util.Log.e("ImportViewModel", "Error reading imported file", e)
                 _uiState.value = _uiState.value.copy(
-                    errorMessage = "Error al leer el archivo: ${e.localizedMessage}"
+                    errorMessage = "Error al leer el archivo: ${e.localizedMessage ?: e.javaClass.simpleName}"
                 )
             }
         }

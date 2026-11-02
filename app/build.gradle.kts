@@ -49,6 +49,9 @@ android {
             excludes += "META-INF/NOTICE.txt"
             excludes += "META-INF/notice.txt"
             excludes += "META-INF/ASL2.0"
+            pickFirsts += "META-INF/services/javax.xml.stream.XMLInputFactory"
+            pickFirsts += "META-INF/services/javax.xml.stream.XMLOutputFactory"
+            pickFirsts += "META-INF/services/javax.xml.stream.XMLEventFactory"
         }
     }
 }
@@ -83,6 +86,8 @@ dependencies {
     // Parsers de archivos tabulares
     implementation(libs.commons.csv)
     implementation(libs.fastexcel.reader)
+    implementation(libs.stax.api)
+    implementation(libs.aalto.xml)
     implementation(libs.pdfbox.android)
 
     // Testing
