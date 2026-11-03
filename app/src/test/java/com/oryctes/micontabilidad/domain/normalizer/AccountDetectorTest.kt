@@ -47,4 +47,91 @@ class AccountDetectorTest {
         assertEquals("Banco Santander", detected!!.entity)
         assertEquals("1332", detected.last4)
     }
+
+    @Test
+    fun testCheckAccountMismatchDetectsOtherExistingAccount() {
+        val targetAccount = com.oryctes.micontabilidad.domain.model.Account(
+            id = 1,
+            alias = "CaixaBank Corriente",
+            entity = "CaixaBank",
+            type = AccountType.CHECKING,
+            last4 = "1111"
+        )
+        val otherAccount = com.oryctes.micontabilidad.domain.model.Account(
+            id = 2,
+            alias = "Santander Nómina",
+            entity = "Banco Santander",
+            type = AccountType.CHECKING,
+            last4 = "2222"
+        )
+        val detected = DetectedAccountInfo(
+            suggestedAlias = "Banco Santander Cuenta •••• 2222",
+            entity = "Banco Santander",
+            type = AccountType.CHECKING,
+            last4 = "2222"
+        )
+
+        val mismatch = AccountDetector.checkAccountMismatch(
+            targetAccount = targetAccount,
+            detected = detected,
+            accounts = listOf(targetAccount, otherAccount)
+        )
+
+        assertNotNull(mismatch)
+        assertEquals(targetAccount.id, mismatch!!.targetAccountId)
+        assertEquals("Santander Nómina", mismatch.detectedAccountName)
+        assertEquals(otherAccount, mismatch.matchingExistingAccount)
+    }
+
+    @Test
+    fun testCheckAccountMismatchWhenAccountMatchesReturnsNull() {
+        val targetAccount = com.oryctes.micontabilidad.domain.model.Account(
+            id = 1,
+            alias = "CaixaBank Corriente",
+            entity = "CaixaBank",
+            type = AccountType.CHECKING,
+            last4 = "1111"
+        )
+        val detected = DetectedAccountInfo(
+            suggestedAlias = "CaixaBank Cuenta •••• 1111",
+            entity = "CaixaBank",
+            type = AccountType.CHECKING,
+            last4 = "1111"
+        )
+
+        val mismatch = AccountDetector.checkAccountMismatch(
+            targetAccount = targetAccount,
+            detected = detected,
+            accounts = listOf(targetAccount)
+        )
+
+        org.junit.Assert.assertNull(mismatch)
+    }
+
+    @Test
+    fun testCheckAccountMismatchSuggestsNewDetectedWhenEntityDiffers() {
+        val targetAccount = com.oryctes.micontabilidad.domain.model.Account(
+            id = 1,
+            alias = "CaixaBank Corriente",
+            entity = "CaixaBank",
+            type = AccountType.CHECKING,
+            last4 = "1111"
+        )
+        val detected = DetectedAccountInfo(
+            suggestedAlias = "BBVA Cuenta •••• 9999",
+            entity = "BBVA",
+            type = AccountType.CHECKING,
+            last4 = "9999"
+        )
+
+        val mismatch = AccountDetector.checkAccountMismatch(
+            targetAccount = targetAccount,
+            detected = detected,
+            accounts = listOf(targetAccount)
+        )
+
+        assertNotNull(mismatch)
+        assertEquals("BBVA Cuenta •••• 9999", mismatch!!.detectedAccountName)
+        org.junit.Assert.assertNull(mismatch.matchingExistingAccount)
+    }
 }

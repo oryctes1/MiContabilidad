@@ -39,6 +39,7 @@ import androidx.compose.material.icons.filled.FileOpen
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -77,6 +78,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.oryctes.micontabilidad.domain.model.AccountType
 import com.oryctes.micontabilidad.domain.model.ColumnMapping
+import com.oryctes.micontabilidad.domain.normalizer.AccountMismatchInfo
 import com.oryctes.micontabilidad.ui.theme.ExpenseRed
 import com.oryctes.micontabilidad.ui.theme.IncomeGreen
 import com.oryctes.micontabilidad.ui.theme.WarningOrange
@@ -109,6 +111,7 @@ fun ImportScreen(
     }
 
     val snackbarHostState = remember { SnackbarHostState() }
+    var showCreateAccountDialogFromMismatch by remember { mutableStateOf(false) }
 
     LaunchedEffect(uiState.infoMessage) {
         uiState.infoMessage?.let { msg ->
@@ -233,6 +236,31 @@ fun ImportScreen(
                     }
                 }
             }
+        }
+
+        if (uiState.showMismatchDialog && uiState.accountMismatch != null) {
+            val mismatch = uiState.accountMismatch!!
+            AccountMismatchDialog(
+                mismatch = mismatch,
+                onSwitchAccount = { viewModel.applyDetectedAccount() },
+                onCreateAccount = {
+                    viewModel.dismissMismatchDialog()
+                    showCreateAccountDialogFromMismatch = true
+                },
+                onContinueAnyway = { viewModel.dismissMismatchDialog() },
+                onCancelImport = { viewModel.resetImport() }
+            )
+        }
+
+        if (showCreateAccountDialogFromMismatch && uiState.detectedAccountInfo != null) {
+            CreateAccountDialog(
+                detectedInfo = uiState.detectedAccountInfo,
+                onDismiss = { showCreateAccountDialogFromMismatch = false },
+                onConfirm = { alias, entity, type, currency, last4 ->
+                    viewModel.createAccountFromDetected(alias, entity, type, currency, last4)
+                    showCreateAccountDialogFromMismatch = false
+                }
+            )
         }
     }
 }
@@ -450,6 +478,62 @@ fun MappingPreviewStep(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+        }
+
+        if (uiState.accountMismatch != null && selectedAccount?.id == uiState.accountMismatch.targetAccountId) {
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.errorContainer
+                    )
+                ) {
+                    Row(
+                        modifier = Modifier.padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Default.Warning,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(28.dp)
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Aviso: Cuenta no coincidente",
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onErrorContainer,
+                                style = MaterialTheme.typography.titleSmall
+                            )
+                            Text(
+                                text = "Se ha detectado que el extracto corresponde a la cuenta '${uiState.accountMismatch.detectedAccountName}'.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onErrorContainer
+                            )
+                            Text(
+                                text = "Actualmente está seleccionada '${selectedAccount.alias}'.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.8f)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Button(
+                            onClick = {
+                                if (uiState.accountMismatch.matchingExistingAccount != null) {
+                                    onSelectAccount(uiState.accountMismatch.matchingExistingAccount.id)
+                                } else {
+                                    showCreateAccountDialog = true
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                        ) {
+                            Text("Corregir")
+                        }
+                    }
+                }
+            }
         }
 
         // Tarjeta interactiva de Cuenta de destino
@@ -1760,6 +1844,91 @@ fun EditDoubtfulItemDialog(
         dismissButton = {
             TextButton(onClick = onDismiss) {
                 Text("Cancelar")
+            }
+        }
+    )
+}
+
+@Composable
+fun AccountMismatchDialog(
+    mismatch: AccountMismatchInfo,
+    onSwitchAccount: () -> Unit,
+    onCreateAccount: () -> Unit,
+    onContinueAnyway: () -> Unit,
+    onCancelImport: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onContinueAnyway,
+        icon = {
+            Icon(
+                Icons.Default.Warning,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.error,
+                modifier = Modifier.size(32.dp)
+            )
+        },
+        title = {
+            Text(
+                text = "Cuenta no coincidente",
+                fontWeight = FontWeight.Bold
+            )
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    text = "Se ha detectado que el extracto corresponde a la cuenta:",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                Surface(
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = "👉 ${mismatch.detectedAccountName}",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                    )
+                }
+                Text(
+                    text = "Sin embargo, tienes seleccionada la cuenta '${mismatch.targetAccountAlias}'.",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                Text(
+                    text = "¿Deseas cambiar a la cuenta detectada para evitar registrar movimientos en una cuenta errónea?",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    if (mismatch.matchingExistingAccount != null) {
+                        onSwitchAccount()
+                    } else {
+                        onCreateAccount()
+                    }
+                }
+            ) {
+                Text(
+                    if (mismatch.matchingExistingAccount != null)
+                        "Cambiar a ${mismatch.matchingExistingAccount.alias}"
+                    else
+                        "Crear y usar '${mismatch.detectedAccountName}'"
+                )
+            }
+        },
+        dismissButton = {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(onClick = onCancelImport) {
+                    Text("Cancelar")
+                }
+                TextButton(onClick = onContinueAnyway) {
+                    Text("Continuar de todos modos")
+                }
             }
         }
     )

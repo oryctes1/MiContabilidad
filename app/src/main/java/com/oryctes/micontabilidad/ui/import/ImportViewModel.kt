@@ -10,6 +10,7 @@ import com.oryctes.micontabilidad.domain.model.ColumnMapping
 import com.oryctes.micontabilidad.domain.model.ImportProfile
 import com.oryctes.micontabilidad.domain.model.ImportResult
 import com.oryctes.micontabilidad.domain.normalizer.AccountDetector
+import com.oryctes.micontabilidad.domain.normalizer.AccountMismatchInfo
 import com.oryctes.micontabilidad.domain.normalizer.ColumnTypeInferer
 import com.oryctes.micontabilidad.domain.normalizer.DetectedAccountInfo
 import com.oryctes.micontabilidad.domain.repository.AccountRepository
@@ -45,6 +46,8 @@ data class ImportUiState(
     val columnMapping: ColumnMapping = ColumnMapping(),
     val isAutoMapped: Boolean = false,
     val detectedAccountInfo: DetectedAccountInfo? = null,
+    val accountMismatch: AccountMismatchInfo? = null,
+    val showMismatchDialog: Boolean = false,
     val saveAsProfileName: String = "",
     val validationSummary: com.oryctes.micontabilidad.domain.model.ImportValidationSummary? = null,
     val backupCreatedMessage: String? = null,
@@ -81,7 +84,35 @@ class ImportViewModel(
     }
 
     fun selectAccount(accountId: Long) {
-        _uiState.value = _uiState.value.copy(selectedAccountId = accountId)
+        val currentTarget = _uiState.value.accounts.find { it.id == accountId }
+        val mismatch = AccountDetector.checkAccountMismatch(
+            targetAccount = currentTarget,
+            detected = _uiState.value.detectedAccountInfo,
+            accounts = _uiState.value.accounts
+        )
+        _uiState.value = _uiState.value.copy(
+            selectedAccountId = accountId,
+            accountMismatch = mismatch
+        )
+    }
+
+    fun dismissMismatchDialog() {
+        _uiState.value = _uiState.value.copy(showMismatchDialog = false)
+    }
+
+    fun applyDetectedAccount() {
+        val mismatch = _uiState.value.accountMismatch ?: return
+        if (mismatch.matchingExistingAccount != null) {
+            _uiState.value = _uiState.value.copy(
+                selectedAccountId = mismatch.matchingExistingAccount.id,
+                accountMismatch = null,
+                showMismatchDialog = false
+            )
+        } else {
+            _uiState.value = _uiState.value.copy(
+                showMismatchDialog = false
+            )
+        }
     }
 
     fun selectProfile(profileId: Long?) {
@@ -121,15 +152,20 @@ class ImportViewModel(
                     documentHeaderLines = parsed.documentHeaderLines
                 )
 
-                // Comprobar si ya existe una cuenta que coincida
-                val existingMatch = detected?.let { det ->
-                    _uiState.value.accounts.find { acc ->
-                        (!det.last4.isNullOrBlank() && acc.last4 == det.last4) ||
-                                (acc.entity.equals(det.entity, ignoreCase = true) && acc.type == det.type)
-                    }
-                }
+                // Comprobar si hay discrepancia entre la cuenta seleccionada y el extracto detectado
+                val currentTarget = _uiState.value.accounts.find { it.id == _uiState.value.selectedAccountId }
+                val mismatch = AccountDetector.checkAccountMismatch(
+                    targetAccount = currentTarget,
+                    detected = detected,
+                    accounts = _uiState.value.accounts
+                )
 
-                val accountIdToSelect = existingMatch?.id ?: _uiState.value.selectedAccountId
+                // Si no había cuenta seleccionada pero se detecta una existente, la seleccionamos
+                val accountIdToSelect = if (currentTarget == null && mismatch?.matchingExistingAccount != null) {
+                    mismatch.matchingExistingAccount.id
+                } else {
+                    _uiState.value.selectedAccountId
+                }
 
                 val previewStart = if (inferredStructure.headerRowIndex >= 0) {
                     inferredStructure.headerRowIndex + 1
@@ -146,6 +182,8 @@ class ImportViewModel(
                     isAutoMapped = true,
                     selectedAccountId = accountIdToSelect,
                     detectedAccountInfo = detected,
+                    accountMismatch = mismatch,
+                    showMismatchDialog = mismatch != null,
                     step = ImportStep.MAPPING_PREVIEW
                 )
             } catch (e: Throwable) {
@@ -216,6 +254,8 @@ class ImportViewModel(
             _uiState.value = _uiState.value.copy(
                 accounts = updatedAccounts,
                 selectedAccountId = newId,
+                accountMismatch = null,
+                showMismatchDialog = false,
                 infoMessage = "Cuenta «$alias» creada y seleccionada para la importación."
             )
         }
@@ -480,6 +520,8 @@ class ImportViewModel(
             importResult = null,
             errorMessage = null,
             detectedAccountInfo = null,
+            accountMismatch = null,
+            showMismatchDialog = false,
             saveAsProfileName = ""
         )
     }

@@ -1,5 +1,6 @@
 package com.oryctes.micontabilidad.domain.normalizer
 
+import com.oryctes.micontabilidad.domain.model.Account
 import com.oryctes.micontabilidad.domain.model.AccountType
 
 data class DetectedAccountInfo(
@@ -9,6 +10,14 @@ data class DetectedAccountInfo(
     val currency: String = "EUR",
     val last4: String? = null,
     val iban: String? = null
+)
+
+data class AccountMismatchInfo(
+    val targetAccountId: Long,
+    val targetAccountAlias: String,
+    val detectedAccountName: String,
+    val matchingExistingAccount: Account? = null,
+    val detectedInfo: DetectedAccountInfo
 )
 
 object AccountDetector {
@@ -188,5 +197,65 @@ object AccountDetector {
                 currency = "EUR"
             )
         }
+    }
+
+    /**
+     * Comprueba si el extracto analizado apunta a una cuenta diferente de la seleccionada
+     * para la importación.
+     */
+    fun checkAccountMismatch(
+        targetAccount: Account?,
+        detected: DetectedAccountInfo?,
+        accounts: List<Account>
+    ): AccountMismatchInfo? {
+        if (targetAccount == null || detected == null) return null
+
+        val hasConcreteClues = (detected.entity != "Mi Entidad" && detected.entity != "Banco") ||
+                !detected.last4.isNullOrBlank() ||
+                !detected.iban.isNullOrBlank()
+        if (!hasConcreteClues) return null
+
+        // 1. ¿Existe otra cuenta existente que coincida con lo detectado?
+        val otherExistingMatch = accounts.find { acc ->
+            acc.id != targetAccount.id && (
+                (!detected.last4.isNullOrBlank() && acc.last4 == detected.last4) ||
+                (detected.last4.isNullOrBlank() && acc.entity.equals(detected.entity, ignoreCase = true) && acc.type == detected.type)
+            )
+        }
+
+        if (otherExistingMatch != null) {
+            return AccountMismatchInfo(
+                targetAccountId = targetAccount.id,
+                targetAccountAlias = targetAccount.alias,
+                detectedAccountName = otherExistingMatch.alias,
+                matchingExistingAccount = otherExistingMatch,
+                detectedInfo = detected
+            )
+        }
+
+        // 2. Si no hay otra cuenta existente coincidente, ¿contradice lo detectado a la cuenta destino seleccionada?
+        val last4Mismatch = !detected.last4.isNullOrBlank() &&
+                !targetAccount.last4.isNullOrBlank() &&
+                detected.last4 != targetAccount.last4
+
+        val entityMismatch = detected.entity != "Banco" &&
+                detected.entity != "Mi Entidad" &&
+                targetAccount.entity.isNotBlank() &&
+                !targetAccount.entity.equals(detected.entity, ignoreCase = true)
+
+        val typeMismatch = detected.type != targetAccount.type &&
+                (!detected.last4.isNullOrBlank() || entityMismatch)
+
+        if (last4Mismatch || entityMismatch || typeMismatch) {
+            return AccountMismatchInfo(
+                targetAccountId = targetAccount.id,
+                targetAccountAlias = targetAccount.alias,
+                detectedAccountName = detected.suggestedAlias,
+                matchingExistingAccount = null,
+                detectedInfo = detected
+            )
+        }
+
+        return null
     }
 }
