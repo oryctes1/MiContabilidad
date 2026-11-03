@@ -182,8 +182,17 @@ fun SummariesScreen(
                             fontWeight = FontWeight.Bold
                         )
                         Spacer(modifier = Modifier.height(8.dp))
-                        val balances = uiState.monthlySummaries.mapNotNull { it.endBalance }
-                        BalanceEvolutionChart(balances = balances)
+                        val balancePoints = uiState.monthlySummaries
+                            .filter { it.endBalance != null }
+                            .map { s ->
+                                val mIdx = s.yearMonth.monthValue - 1
+                                com.oryctes.micontabilidad.ui.components.BalanceDataPoint(
+                                    label = monthNames.getOrElse(mIdx) { "${s.yearMonth.monthValue}" },
+                                    fullDate = "${monthNames.getOrElse(mIdx) { "" }} ${s.yearMonth.year}",
+                                    balance = s.endBalance ?: java.math.BigDecimal.ZERO
+                                )
+                            }
+                        BalanceEvolutionChart(dataPoints = balancePoints)
                     }
                 }
             }
