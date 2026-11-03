@@ -48,7 +48,7 @@ val appModule = module {
 
     // ViewModels
     viewModel { DashboardViewModel(get(), get()) }
-    viewModel { AccountsViewModel(get()) }
+    viewModel { AccountsViewModel(get(), get()) }
     viewModel { TransactionsViewModel(get(), get()) }
     viewModel { ImportViewModel(get(), get(), get()) }
     viewModel { SummariesViewModel(get(), get()) }

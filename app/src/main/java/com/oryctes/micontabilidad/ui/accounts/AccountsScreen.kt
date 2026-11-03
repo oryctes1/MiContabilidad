@@ -50,6 +50,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.oryctes.micontabilidad.domain.model.Account
 import com.oryctes.micontabilidad.domain.model.AccountType
+import com.oryctes.micontabilidad.domain.model.AccountWithBalance
 import com.oryctes.micontabilidad.ui.components.EmptyState
 import org.koin.androidx.compose.koinViewModel
 
@@ -97,15 +98,15 @@ fun AccountsScreen(
                     .padding(horizontal = 16.dp, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                items(uiState.accounts, key = { it.id }) { account ->
+                items(uiState.accounts, key = { it.account.id }) { item ->
                     AccountCard(
-                        account = account,
+                        accountWithBalance = item,
                         onEdit = {
-                            accountToEdit = account
+                            accountToEdit = item.account
                             showDialog = true
                         },
-                        onToggleArchive = { viewModel.toggleArchived(account) },
-                        onDelete = { accountToDelete = account }
+                        onToggleArchive = { viewModel.toggleArchived(item.account) },
+                        onDelete = { accountToDelete = item.account }
                     )
                 }
             }
@@ -155,11 +156,14 @@ fun AccountsScreen(
 
 @Composable
 fun AccountCard(
-    account: Account,
+    accountWithBalance: AccountWithBalance,
     onEdit: () -> Unit,
     onToggleArchive: () -> Unit,
     onDelete: () -> Unit
 ) {
+    val account = accountWithBalance.account
+    val dateFormatter = remember { java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy") }
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
@@ -175,7 +179,10 @@ fun AccountCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    modifier = Modifier.weight(1f),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     val icon = if (account.type == AccountType.CREDIT_CARD || account.type == AccountType.DEBIT_CARD) {
                         Icons.Default.CreditCard
                     } else {
@@ -217,7 +224,62 @@ fun AccountCard(
                 }
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Tarjeta destacada con el último saldo conocido y su fecha
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                )
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(
+                            text = "Último saldo conocido",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        if (accountWithBalance.lastBalanceDate != null) {
+                            Text(
+                                text = "A fecha: ${accountWithBalance.lastBalanceDate.format(dateFormatter)}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        } else {
+                            Text(
+                                text = "Sin fecha registrada",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                            )
+                        }
+                    }
+
+                    if (accountWithBalance.lastBalance != null) {
+                        Text(
+                            text = "${accountWithBalance.lastBalance.toPlainString()} ${account.currency}",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    } else {
+                        Text(
+                            text = "Sin saldo",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
 
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 SuggestionChip(

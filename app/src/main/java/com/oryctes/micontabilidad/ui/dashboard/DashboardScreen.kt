@@ -36,6 +36,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -44,6 +45,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.oryctes.micontabilidad.domain.model.Account
 import com.oryctes.micontabilidad.domain.model.AccountType
+import com.oryctes.micontabilidad.domain.model.AccountWithBalance
 import com.oryctes.micontabilidad.domain.model.Transaction
 import com.oryctes.micontabilidad.ui.components.EmptyState
 import com.oryctes.micontabilidad.ui.components.MonthlyBarChart
@@ -200,8 +202,8 @@ fun DashboardScreen(
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        items(uiState.accounts) { account ->
-                            AccountMiniCard(account = account)
+                        items(uiState.accounts, key = { it.account.id }) { item ->
+                            AccountMiniCard(accountWithBalance = item)
                         }
                     }
                 }
@@ -273,22 +275,38 @@ fun DashboardScreen(
 }
 
 @Composable
-fun AccountMiniCard(account: Account) {
+fun AccountMiniCard(accountWithBalance: AccountWithBalance) {
+    val account = accountWithBalance.account
+    val dateFormatter = remember { java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy") }
+
     Card(
-        modifier = Modifier.width(180.dp),
+        modifier = Modifier.width(200.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
-            val icon = if (account.type == AccountType.CREDIT_CARD || account.type == AccountType.DEBIT_CARD) {
-                Icons.Default.CreditCard
-            } else {
-                Icons.Default.AccountBalance
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                val icon = if (account.type == AccountType.CREDIT_CARD || account.type == AccountType.DEBIT_CARD) {
+                    Icons.Default.CreditCard
+                } else {
+                    Icons.Default.AccountBalance
+                }
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary
+                )
+                if (accountWithBalance.lastBalanceDate != null) {
+                    Text(
+                        text = accountWithBalance.lastBalanceDate.format(dateFormatter),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary
-            )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
                 text = account.alias,
@@ -304,6 +322,27 @@ fun AccountMiniCard(account: Account) {
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
+            Spacer(modifier = Modifier.height(10.dp))
+            if (accountWithBalance.lastBalance != null) {
+                Text(
+                    text = "${accountWithBalance.lastBalance.toPlainString()} ${account.currency}",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                val dateStr = accountWithBalance.lastBalanceDate?.format(dateFormatter)
+                Text(
+                    text = if (dateStr != null) "Saldo a $dateStr" else "Último saldo",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            } else {
+                Text(
+                    text = "Sin saldo registrado",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                )
+            }
         }
     }
 }

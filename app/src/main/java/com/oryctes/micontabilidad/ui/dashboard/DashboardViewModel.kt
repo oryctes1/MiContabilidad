@@ -3,8 +3,10 @@ package com.oryctes.micontabilidad.ui.dashboard
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.oryctes.micontabilidad.domain.model.Account
+import com.oryctes.micontabilidad.domain.model.AccountWithBalance
 import com.oryctes.micontabilidad.domain.model.MonthlySummary
 import com.oryctes.micontabilidad.domain.model.Transaction
+import com.oryctes.micontabilidad.domain.model.withBalance
 import com.oryctes.micontabilidad.domain.repository.AccountRepository
 import com.oryctes.micontabilidad.domain.repository.TransactionRepository
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -19,7 +21,7 @@ import java.time.YearMonth
 
 data class DashboardUiState(
     val isLoading: Boolean = true,
-    val accounts: List<Account> = emptyList(),
+    val accounts: List<AccountWithBalance> = emptyList(),
     val currentMonthSummary: MonthlySummary? = null,
     val recentTransactions: List<Transaction> = emptyList(),
     val monthlyHistory: List<MonthlySummary> = emptyList(),
@@ -42,16 +44,14 @@ class DashboardViewModel(
         val currentMonth = summaries.find { it.yearMonth == currentYearMonth }
         val recent = allTxs.take(5)
 
-        // Calcular el saldo global sumando el último saldo conocido por cuenta
-        val balanceSum = accounts.mapNotNull { acc ->
-            allTxs.filter { it.accountId == acc.id && it.balance != null }
-                .maxByOrNull { it.operationDate }
-                ?.balance
-        }.fold(BigDecimal.ZERO) { acc, b -> acc.add(b) }
+        // Calcular cuentas con último saldo conocido y saldo total global
+        val accountsWithBalance = accounts.map { it.withBalance(allTxs) }
+        val balanceSum = accountsWithBalance.mapNotNull { it.lastBalance }
+            .fold(BigDecimal.ZERO) { acc, b -> acc.add(b) }
 
         DashboardUiState(
             isLoading = false,
-            accounts = accounts,
+            accounts = accountsWithBalance,
             currentMonthSummary = currentMonth,
             recentTransactions = recent,
             monthlyHistory = summaries,
