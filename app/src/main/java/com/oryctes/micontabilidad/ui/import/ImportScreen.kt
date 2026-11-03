@@ -1385,52 +1385,72 @@ fun ValidationSummaryStep(
                     )
                 ) {
                     Column(modifier = Modifier.padding(12.dp)) {
+                        // Fila principal: Fila y Concepto ocupando todo el ancho horizontal disponible
+                        Text(
+                            text = "Fila ${item.originalRowIndex + 1}: ${item.concept}",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = "Fila ${item.originalRowIndex + 1}: ${item.concept}",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                                Text(
-                                    text = "Fecha: ${item.operationDate?.format(dateFormatter) ?: "-"} | Cuantía: ${item.amount ?: 0} €",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                item.duplicateReason?.let { reason ->
-                                    Text(
-                                        text = "Motivo: $reason",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = WarningOrange,
-                                        fontWeight = FontWeight.SemiBold
-                                    )
-                                }
+                            Text(
+                                text = "Fecha: ${item.operationDate?.format(dateFormatter) ?: "-"}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            val amt = item.amount ?: java.math.BigDecimal.ZERO
+                            Text(
+                                text = (if (amt >= java.math.BigDecimal.ZERO) "+" else "") + "$amt €",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = if (amt >= java.math.BigDecimal.ZERO) IncomeGreen else ExpenseRed
+                            )
+                        }
+                        item.duplicateReason?.let { reason ->
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = "Motivo: $reason",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = WarningOrange,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        // Botones de acción en su propia fila inferior para no comprimir los textos ni colapsar verticalmente
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            TextButton(
+                                onClick = { onToggleExclude(item.originalRowIndex) },
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                            ) {
+                                Text("Desestimar", color = MaterialTheme.colorScheme.error, maxLines = 1)
                             }
-                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                Button(
-                                    onClick = { onAcceptDuplicate(item.originalRowIndex) },
-                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
-                                ) {
-                                    Text("Aceptar")
-                                }
-                                OutlinedButton(
-                                    onClick = { editingItem = item },
-                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
-                                ) {
-                                    Text("Editar")
-                                }
-                                TextButton(
-                                    onClick = { onToggleExclude(item.originalRowIndex) },
-                                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
-                                ) {
-                                    Text("Desestimar", color = MaterialTheme.colorScheme.error)
-                                }
+                            Spacer(modifier = Modifier.width(6.dp))
+                            OutlinedButton(
+                                onClick = { editingItem = item },
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp)
+                            ) {
+                                Text("Editar", maxLines = 1)
+                            }
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Button(
+                                onClick = { onAcceptDuplicate(item.originalRowIndex) },
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp)
+                            ) {
+                                Text("Aceptar", maxLines = 1)
                             }
                         }
                     }
@@ -1463,31 +1483,42 @@ fun ValidationSummaryStep(
                     )
                 ) {
                     Column(modifier = Modifier.padding(12.dp)) {
+                        Text(
+                            text = "Fila ${item.originalRowIndex + 1}: ${item.doubtReason ?: "Revisar datos"}",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.error,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Valores detectados: ${item.originalCells.filter { it.isNotBlank() }.joinToString(" | ")}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
+                            horizontalArrangement = Arrangement.End,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(
-                                text = "Fila ${item.originalRowIndex + 1}: ${item.doubtReason ?: "Revisar datos"}",
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.error
-                            )
-                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                TextButton(onClick = { editingItem = item }) {
-                                    Text("Editar")
-                                }
-                                TextButton(onClick = { onToggleExclude(item.originalRowIndex) }) {
-                                    Text("Desestimar", color = MaterialTheme.colorScheme.error)
-                                }
+                            TextButton(
+                                onClick = { onToggleExclude(item.originalRowIndex) },
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                            ) {
+                                Text("Desestimar", color = MaterialTheme.colorScheme.error, maxLines = 1)
+                            }
+                            Spacer(modifier = Modifier.width(6.dp))
+                            OutlinedButton(
+                                onClick = { editingItem = item },
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp)
+                            ) {
+                                Text("Editar", maxLines = 1)
                             }
                         }
-                        Text(
-                            text = "Valores crudos: ${item.originalCells.filter { it.isNotBlank() }.joinToString(" | ")}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
                     }
                 }
             }
