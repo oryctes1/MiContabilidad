@@ -303,6 +303,9 @@ object ColumnTypeInferer {
             val rawConcept = if (mapping.conceptIndex >= 0) row.cells.getOrNull(mapping.conceptIndex)?.trim().orEmpty() else ""
             val rawDetails = if (mapping.conceptDetailsIndex >= 0) row.cells.getOrNull(mapping.conceptDetailsIndex)?.trim().orEmpty() else ""
 
+            var conceptToClean = rawConcept
+            var detailsToClean = rawDetails
+
             // Extraer cuantía / importe
             var amount: BigDecimal? = if (mapping.amountIndex >= 0) {
                 val rawAmount = row.cells.getOrNull(mapping.amountIndex)
@@ -322,6 +325,55 @@ object ColumnTypeInferer {
                 AmountNormalizer.parseAmount(rawBal, mapping.decimalSeparator)
             } else null
 
+            // Rescate de cuantía si venía vacía por desalineación en PDF
+            if (amount == null) {
+                // Caso A: El saldo contiene números concatenados (ej. "7.50 53,954.22") o cayó en saldo
+                val rawBal = if (mapping.balanceIndex >= 0) row.cells.getOrNull(mapping.balanceIndex) else null
+                if (!rawBal.isNullOrBlank()) {
+                    val balAmounts = AmountNormalizer.extractAllAmounts(rawBal, mapping.decimalSeparator)
+                    if (balAmounts.size >= 2) {
+                        amount = balAmounts.first()
+                        balance = balAmounts.last()
+                    } else if (balAmounts.size == 1 && balance == null) {
+                        amount = balAmounts.first()
+                    }
+                }
+
+                // Caso B: Más datos o Concepto contienen el importe al final (ej. "... INVESTIGACION 117.04")
+                if (amount == null) {
+                    val detailsAmounts = AmountNormalizer.extractAllAmounts(detailsToClean, mapping.decimalSeparator)
+                    if (detailsAmounts.isNotEmpty()) {
+                        amount = detailsAmounts.last()
+                        detailsToClean = detailsToClean.replace(Regex("""[-+]?\s*(?:\d{1,3}(?:[.,]\d{3})+|\d+)[.,]\d{1,2}\s*$"""), "").trim()
+                    }
+                }
+
+                if (amount == null) {
+                    val conceptAmounts = AmountNormalizer.extractAllAmounts(conceptToClean, mapping.decimalSeparator)
+                    if (conceptAmounts.isNotEmpty()) {
+                        amount = conceptAmounts.last()
+                        conceptToClean = conceptToClean.replace(Regex("""[-+]?\s*(?:\d{1,3}(?:[.,]\d{3})+|\d+)[.,]\d{1,2}\s*$"""), "").trim()
+                    }
+                }
+
+                // Caso C: Escaneo exhaustivo en cualquier celda no asignada a fecha, importe o saldo
+                if (amount == null) {
+                    for ((cIdx, cellText) in row.cells.withIndex()) {
+                        if (cIdx != mapping.operationDateIndex && 
+                            cIdx != mapping.valueDateIndex && 
+                            cIdx != mapping.balanceIndex && 
+                            cIdx != mapping.amountIndex && 
+                            cellText.isNotBlank()) {
+                            val cands = AmountNormalizer.extractAllAmounts(cellText, mapping.decimalSeparator)
+                            if (cands.isNotEmpty()) {
+                                amount = cands.last()
+                                break
+                            }
+                        }
+                    }
+                }
+            }
+
             // Comprobación de dudas / anomalías
             var isDoubtful = false
             var doubtReason: String? = null
@@ -334,30 +386,19 @@ object ColumnTypeInferer {
             if (opDate == null) {
                 isDoubtful = true
                 doubtReason = if (rawOpDate.isNullOrBlank()) "Fecha de operación vacía" else "Fecha no reconocida: '$rawOpDate'"
-            } else if (rawConcept.isBlank() && rawDetails.isBlank()) {
+            } else if (conceptToClean.isBlank() && detailsToClean.isBlank()) {
                 isDoubtful = true
                 doubtReason = "Concepto vacío"
             } else if (amount == null) {
-                // Intento de rescate si el saldo u otra celda lo tenía
-                if (balance != null && mapping.balanceIndex >= 0) {
-                    val rawBal = row.cells.getOrNull(mapping.balanceIndex)
-                    val balAmounts = AmountNormalizer.extractAllAmounts(rawBal ?: "", mapping.decimalSeparator)
-                    if (balAmounts.size >= 2) {
-                        amount = balAmounts.first()
-                        balance = balAmounts.last()
-                    }
-                }
-                if (amount == null) {
-                    isDoubtful = true
-                    doubtReason = "Cuantía no reconocida o vacía"
-                }
+                isDoubtful = true
+                doubtReason = "Cuantía no reconocida o vacía"
             }
 
-            val effectiveConcept = if (rawDetails.isNotBlank()) {
-                if (rawConcept.contains(rawDetails, ignoreCase = true)) rawConcept
-                else if (rawDetails.contains(rawConcept, ignoreCase = true)) rawDetails
-                else "$rawConcept - $rawDetails"
-            } else rawConcept
+            val effectiveConcept = if (detailsToClean.isNotBlank()) {
+                if (conceptToClean.contains(detailsToClean, ignoreCase = true)) conceptToClean
+                else if (detailsToClean.contains(conceptToClean, ignoreCase = true)) detailsToClean
+                else "$conceptToClean - $detailsToClean"
+            } else conceptToClean
 
             // Detección de duplicado frente a transacciones ya existentes o dentro del mismo extracto
             var isPossibleDuplicate = false

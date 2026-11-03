@@ -7,6 +7,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import com.oryctes.micontabilidad.domain.model.Account
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AssistChip
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -1482,24 +1484,54 @@ fun ValidationSummaryStep(
                         containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.15f)
                     )
                 ) {
-                    Column(modifier = Modifier.padding(12.dp)) {
+                    Column(modifier = Modifier.padding(14.dp)) {
+                        // Cabecera: Fila y Fecha de operación visible
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Fila ${item.originalRowIndex + 1}",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                            Text(
+                                text = "Fecha: ${item.operationDate?.format(dateFormatter) ?: "Sin fecha"}",
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(6.dp))
+
+                        // Concepto principal visible en amplio (hasta 3 líneas)
+                        val displayConcept = item.concept.ifBlank {
+                            item.originalCells.drop(2).filter { it.isNotBlank() }.joinToString(" - ")
+                        }
                         Text(
-                            text = "Fila ${item.originalRowIndex + 1}: ${item.doubtReason ?: "Revisar datos"}",
-                            style = MaterialTheme.typography.labelMedium,
+                            text = displayConcept,
+                            style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.error,
-                            maxLines = 1,
+                            maxLines = 3,
                             overflow = TextOverflow.Ellipsis
                         )
+
                         Spacer(modifier = Modifier.height(4.dp))
+
+                        // Motivo de revisión / duda
                         Text(
-                            text = "Valores detectados: ${item.originalCells.filter { it.isNotBlank() }.joinToString(" | ")}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+                            text = "⚠️ ${item.doubtReason ?: "Revisar datos"}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.error,
+                            fontWeight = FontWeight.Medium
                         )
+
                         Spacer(modifier = Modifier.height(8.dp))
+
+                        // Botones de acción en fila inferior
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.End,
@@ -1512,11 +1544,11 @@ fun ValidationSummaryStep(
                                 Text("Desestimar", color = MaterialTheme.colorScheme.error, maxLines = 1)
                             }
                             Spacer(modifier = Modifier.width(6.dp))
-                            OutlinedButton(
+                            Button(
                                 onClick = { editingItem = item },
-                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp)
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp)
                             ) {
-                                Text("Editar", maxLines = 1)
+                                Text("Editar / Asignar cuantía", maxLines = 1)
                             }
                         }
                     }
@@ -1612,19 +1644,73 @@ fun EditDoubtfulItemDialog(
 ) {
     val dateFormatter = java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy")
     var dateText by remember { mutableStateOf(item.operationDate?.format(dateFormatter) ?: "") }
-    var conceptText by remember { mutableStateOf(item.concept) }
+    var conceptText by remember { mutableStateOf(item.concept.ifBlank { item.originalCells.drop(2).filter { it.isNotBlank() }.joinToString(" - ") }) }
     var amountText by remember { mutableStateOf(item.amount?.toPlainString() ?: "") }
     var balanceText by remember { mutableStateOf(item.balance?.toPlainString() ?: "") }
 
+    val rawText = remember(item) {
+        item.originalCells.filter { it.isNotBlank() }.joinToString(" | ")
+    }
+
+    val candidateAmounts = remember(item) {
+        val fullSearch = "${item.concept} ${item.originalCells.joinToString(" ")}"
+        com.oryctes.micontabilidad.domain.normalizer.AmountNormalizer.extractAllAmounts(fullSearch).distinct()
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Corregir Apunte Dudoso", fontWeight = FontWeight.Bold) },
+        title = { Text("Corregir Apunte Dudoso (Fila ${item.originalRowIndex + 1})", fontWeight = FontWeight.Bold) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text(
-                    text = "Modifica los datos para que el apunte sea reconocido e incorporado:",
-                    style = MaterialTheme.typography.bodySmall
-                )
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                // Caja con el texto completo original del PDF
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(10.dp)) {
+                        Text(
+                            text = "Texto original en el extracto bancario:",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = rawText,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                // Sugerencias de cuantías detectadas en el texto
+                if (candidateAmounts.isNotEmpty()) {
+                    Column {
+                        Text(
+                            text = "💡 Cuantías detectadas en el texto (toca para rellenar):",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Row(
+                            modifier = Modifier.horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            candidateAmounts.forEach { cand ->
+                                AssistChip(
+                                    onClick = { amountText = cand.toPlainString() },
+                                    label = { Text("${cand.toPlainString()} €", fontWeight = FontWeight.Bold) }
+                                )
+                            }
+                        }
+                    }
+                }
+
                 OutlinedTextField(
                     value = dateText,
                     onValueChange = { dateText = it },
@@ -1632,13 +1718,16 @@ fun EditDoubtfulItemDialog(
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
+
                 OutlinedTextField(
                     value = conceptText,
                     onValueChange = { conceptText = it },
                     label = { Text("Concepto") },
-                    singleLine = true,
+                    minLines = 2,
+                    maxLines = 4,
                     modifier = Modifier.fillMaxWidth()
                 )
+
                 OutlinedTextField(
                     value = amountText,
                     onValueChange = { amountText = it },
@@ -1646,6 +1735,7 @@ fun EditDoubtfulItemDialog(
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
+
                 OutlinedTextField(
                     value = balanceText,
                     onValueChange = { balanceText = it },
