@@ -32,6 +32,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CreditCard
 import androidx.compose.material.icons.filled.Error
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.FileOpen
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material3.AlertDialog
@@ -82,7 +83,7 @@ import org.koin.androidx.compose.koinViewModel
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ImportScreen(
-    onNavigateToTransactions: () -> Unit,
+    onNavigateToTransactions: (com.oryctes.micontabilidad.ui.transactions.TransactionTypeFilter?) -> Unit,
     viewModel: ImportViewModel = koinViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -134,6 +135,7 @@ fun ImportScreen(
                         uiState = uiState,
                         onSelectAccount = { viewModel.selectAccount(it) },
                         onSelectProfile = { viewModel.selectProfile(it) },
+                        onRollbackLastImport = { viewModel.rollbackLastImport() },
                         onPickFile = {
                             filePicker.launch(
                                 arrayOf(
@@ -161,9 +163,26 @@ fun ImportScreen(
                         onSetSkipRows = { viewModel.setSkipHeaderRows(it) },
                         onUpdateMapping = { viewModel.updateMapping(it) },
                         onSetProfileName = { viewModel.setSaveProfileName(it) },
-                        onConfirm = { viewModel.startImport() },
+                        onConfirm = { viewModel.moveToValidationSummary() },
                         onCancel = { viewModel.resetImport() }
                     )
+                }
+
+                ImportStep.VALIDATION_SUMMARY -> {
+                    uiState.validationSummary?.let { summary ->
+                        ValidationSummaryStep(
+                            summary = summary,
+                            accountAlias = uiState.accounts.find { it.id == uiState.selectedAccountId }?.alias ?: "Cuenta",
+                            onToggleExclude = { viewModel.toggleExcludeItem(it) },
+                            onAcceptDuplicate = { viewModel.acceptDuplicate(it) },
+                            onAcceptAllDuplicates = { viewModel.acceptAllDuplicates() },
+                            onUpdateItem = { rowIdx, date, concept, amount, balance ->
+                                viewModel.updateInspectedItem(rowIdx, date, concept, amount, balance)
+                            },
+                            onBackToMapping = { viewModel.backToMapping() },
+                            onConfirmImport = { viewModel.confirmImport() }
+                        )
+                    }
                 }
 
                 ImportStep.IMPORTING -> {
@@ -184,8 +203,15 @@ fun ImportScreen(
                         ImportResultStep(
                             result = result,
                             onDone = {
+                                val filter = if (result.possibleDuplicatesMarked > 0) {
+                                    com.oryctes.micontabilidad.ui.transactions.TransactionTypeFilter.PENDING_REVIEW
+                                } else null
                                 viewModel.resetImport()
-                                onNavigateToTransactions()
+                                onNavigateToTransactions(filter)
+                            },
+                            onReviewDuplicates = {
+                                viewModel.resetImport()
+                                onNavigateToTransactions(com.oryctes.micontabilidad.ui.transactions.TransactionTypeFilter.PENDING_REVIEW)
                             },
                             onImportAnother = { viewModel.resetImport() }
                         )
@@ -215,6 +241,7 @@ fun SelectFileStep(
     uiState: ImportUiState,
     onSelectAccount: (Long) -> Unit,
     onSelectProfile: (Long?) -> Unit,
+    onRollbackLastImport: () -> Unit,
     onPickFile: () -> Unit
 ) {
     var accountMenuExpanded by remember { mutableStateOf(false) }
@@ -226,6 +253,40 @@ fun SelectFileStep(
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold
         )
+
+        if (uiState.canRollback) {
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant
+                ),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier.padding(12.dp).fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Deshacer última importación",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "Si la última importación no fue satisfactoria, puedes desestimarla y eliminar sus apuntes.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    OutlinedButton(
+                        onClick = onRollbackLastImport
+                    ) {
+                        Text("Desestimar", color = MaterialTheme.colorScheme.error)
+                    }
+                }
+            }
+        }
 
         if (uiState.accounts.isNotEmpty()) {
             ExposedDropdownMenuBox(
@@ -744,7 +805,7 @@ fun MappingPreviewStep(
                     modifier = Modifier.weight(1f)
                 ) {
                     Text(
-                        text = if (selectedAccount != null) "Importar en ${selectedAccount.alias}" else "Importar",
+                        text = "Validar y Examinar Extracto",
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -1034,128 +1095,176 @@ fun ColumnSelectorWithSample(
 fun ImportResultStep(
     result: com.oryctes.micontabilidad.domain.model.ImportResult,
     onDone: () -> Unit,
+    onReviewDuplicates: () -> Unit,
     onImportAnother: () -> Unit
 ) {
-    Column(
+    LazyColumn(
         modifier = Modifier.fillMaxSize(),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(
-                Icons.Default.CheckCircle,
-                contentDescription = null,
-                tint = IncomeGreen,
-                modifier = Modifier.height(36.dp)
-            )
-            Spacer(modifier = Modifier.width(12.dp))
-            Column {
-                Text(
-                    text = "Importación Completada",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold
+        item {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Default.CheckCircle,
+                    contentDescription = null,
+                    tint = IncomeGreen,
+                    modifier = Modifier.height(36.dp)
                 )
-                Text(
-                    text = "Archivo: ${result.fileName} en '${result.accountAlias}'",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                Spacer(modifier = Modifier.width(12.dp))
+                Column {
+                    Text(
+                        text = "Importación Completada",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "Archivo: ${result.fileName} en '${result.accountAlias}'",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
         }
 
-        Card(modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                StatRow("Total filas analizadas", "${result.totalProcessed}")
-                StatRow("Movimientos nuevos insertados", "+${result.insertedCount}", color = IncomeGreen)
-                if (result.possibleDuplicatesMarked > 0) {
-                    StatRow("Duplicados marcados para revisión", "${result.possibleDuplicatesMarked}", color = WarningOrange)
+        item {
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    StatRow("Total filas analizadas", "${result.totalProcessed}")
+                    StatRow("Movimientos nuevos insertados", "+${result.insertedCount}", color = IncomeGreen)
+                    if (result.possibleDuplicatesMarked > 0) {
+                        StatRow("Duplicados marcados para revisión", "${result.possibleDuplicatesMarked}", color = WarningOrange)
+                    }
+                    if (result.exactDuplicatesIgnored > 0) {
+                        StatRow("Duplicados omitidos", "${result.exactDuplicatesIgnored}", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    if (result.errors.isNotEmpty()) {
+                        StatRow("Filas con error de formato", "${result.errors.size}", color = ExpenseRed)
+                    }
                 }
-                if (result.exactDuplicatesIgnored > 0) {
-                    StatRow("Duplicados omitidos", "${result.exactDuplicatesIgnored}", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                if (result.errors.isNotEmpty()) {
-                    StatRow("Filas con error de formato", "${result.errors.size}", color = ExpenseRed)
+            }
+        }
+
+        if (result.possibleDuplicatesMarked > 0) {
+            item {
+                OutlinedCard(
+                    onClick = onReviewDuplicates,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.outlinedCardColors(
+                        containerColor = WarningOrange.copy(alpha = 0.12f)
+                    )
+                ) {
+                    Row(
+                        modifier = Modifier.padding(14.dp).fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            modifier = Modifier.weight(1f),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.Default.Warning,
+                                contentDescription = null,
+                                tint = WarningOrange,
+                                modifier = Modifier.size(24.dp)
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text(
+                                    text = "Hay ${result.possibleDuplicatesMarked} apunte(s) marcado(s) como duplicado",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = WarningOrange
+                                )
+                                Text(
+                                    text = "Pulsa aquí para ir directamente a revisarlos en Movimientos",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                        Text(
+                            text = "Revisar >",
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary,
+                            style = MaterialTheme.typography.labelLarge
+                        )
+                    }
                 }
             }
         }
 
         if (result.duplicateDetails.isNotEmpty()) {
-            Text(
-                text = "Detalle de movimientos duplicados (guardados para revisión):",
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
-                color = WarningOrange
-            )
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.15f)
+            item {
+                Text(
+                    text = "Detalle de movimientos duplicados (guardados para revisión):",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = WarningOrange
                 )
-            ) {
-                LazyColumn(
+            }
+            items(result.duplicateDetails) { dup ->
+                Card(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(max = 130.dp)
-                        .padding(10.dp)
+                        .clickable { onReviewDuplicates() },
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.15f)
+                    )
                 ) {
-                    items(result.duplicateDetails) { dup ->
-                        Text(
-                            text = "• $dup",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            modifier = Modifier.padding(vertical = 2.dp)
-                        )
-                    }
+                    Text(
+                        text = "• $dup",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.padding(10.dp)
+                    )
                 }
             }
         }
 
         if (result.errors.isNotEmpty()) {
-            Text(
-                text = "Detalle de incidencias:",
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold
-            )
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.2f)
+            item {
+                Text(
+                    text = "Detalle de incidencias:",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold
                 )
-            ) {
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 130.dp)
-                        .padding(10.dp)
+            }
+            items(result.errors) { err ->
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.2f)
+                    )
                 ) {
-                    items(result.errors) { err ->
-                        Text(
-                            text = "• $err",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = ExpenseRed,
-                            modifier = Modifier.padding(vertical = 2.dp)
-                        )
-                    }
+                    Text(
+                        text = "• $err",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = ExpenseRed,
+                        modifier = Modifier.padding(10.dp)
+                    )
                 }
             }
         }
 
-        Spacer(modifier = Modifier.weight(1f))
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            OutlinedButton(
-                onClick = onImportAnother,
-                modifier = Modifier.weight(1f)
+        item {
+            Spacer(modifier = Modifier.height(16.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Text("Importar otro")
-            }
-            Button(
-                onClick = onDone,
-                modifier = Modifier.weight(1f)
-            ) {
-                Text("Ver Movimientos")
+                OutlinedButton(
+                    onClick = onImportAnother,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("Importar otro")
+                }
+                Button(
+                    onClick = onDone,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("Ver Movimientos")
+                }
             }
         }
     }
@@ -1170,4 +1279,367 @@ fun StatRow(label: String, value: String, color: androidx.compose.ui.graphics.Co
         Text(text = label, style = MaterialTheme.typography.bodyMedium)
         Text(text = value, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = color)
     }
+}
+
+@Composable
+fun ValidationSummaryStep(
+    summary: com.oryctes.micontabilidad.domain.model.ImportValidationSummary,
+    accountAlias: String,
+    onToggleExclude: (Int) -> Unit,
+    onAcceptDuplicate: (Int) -> Unit,
+    onAcceptAllDuplicates: () -> Unit,
+    onUpdateItem: (rowIdx: Int, date: java.time.LocalDate?, concept: String, amount: java.math.BigDecimal?, balance: java.math.BigDecimal?) -> Unit,
+    onBackToMapping: () -> Unit,
+    onConfirmImport: () -> Unit
+) {
+    var editingItem by remember { mutableStateOf<com.oryctes.micontabilidad.domain.model.InspectedTransactionItem?>(null) }
+    val dateFormatter = java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy")
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        item {
+            Text(
+                text = "Resumen de Validación del Extracto",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                text = "Por favor comprueba los totales y el estado de los apuntes antes de incorporarlos a '$accountAlias'. Se creará automáticamente un punto de restauración que te permitirá revertir la operación.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+
+        // Tarjeta resumen con métricas clave
+        item {
+            ElevatedCard(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    StatRow("Apuntes válidos detectados", "${summary.validTransactionsCount}")
+                    if (summary.possibleDuplicateCount > 0) {
+                        StatRow("Posibles duplicados detectados", "${summary.possibleDuplicateCount}", color = WarningOrange)
+                    }
+                    if (summary.doubtfulCount > 0) {
+                        StatRow("Apuntes con dudas o datos incompletos", "${summary.doubtfulCount}", color = ExpenseRed)
+                    }
+                    if (summary.excludedCount > 0) {
+                        StatRow("Apuntes desestimados/excluidos", "${summary.excludedCount}", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    StatRow(
+                        "Suma total de cuantías",
+                        "${summary.totalAmountSum} €",
+                        color = if (summary.totalAmountSum >= java.math.BigDecimal.ZERO) IncomeGreen else ExpenseRed
+                    )
+                    if (summary.averageBalance != null) {
+                        StatRow("Valor promedio del saldo", "${summary.averageBalance} €")
+                    }
+                    if (summary.dateRange.first != null && summary.dateRange.second != null) {
+                        StatRow(
+                            "Periodo temporal",
+                            "${summary.dateRange.first?.format(dateFormatter)} al ${summary.dateRange.second?.format(dateFormatter)}"
+                        )
+                    }
+                }
+            }
+        }
+
+        // Sección de duplicados detectados en el extracto
+        val duplicateItems = summary.inspectedItems.filter { it.isPossibleDuplicate && !it.isExcluded && !it.isDuplicateAccepted }
+        if (duplicateItems.isNotEmpty()) {
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "🔁 Posibles duplicados detectados (${duplicateItems.size})",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = WarningOrange
+                        )
+                        Text(
+                            text = "Movimientos con igual importe y fecha próxima. Pulsa Aceptar si son correctos, Desestimar para omitirlos o Editar:",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    if (duplicateItems.size > 1) {
+                        Button(
+                            onClick = onAcceptAllDuplicates,
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                        ) {
+                            Text("Aceptar todos")
+                        }
+                    }
+                }
+            }
+
+            items(duplicateItems) { item ->
+                OutlinedCard(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.outlinedCardColors(
+                        containerColor = WarningOrange.copy(alpha = 0.1f)
+                    )
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Fila ${item.originalRowIndex + 1}: ${item.concept}",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    text = "Fecha: ${item.operationDate?.format(dateFormatter) ?: "-"} | Cuantía: ${item.amount ?: 0} €",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                item.duplicateReason?.let { reason ->
+                                    Text(
+                                        text = "Motivo: $reason",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = WarningOrange,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
+                            }
+                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Button(
+                                    onClick = { onAcceptDuplicate(item.originalRowIndex) },
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                                ) {
+                                    Text("Aceptar")
+                                }
+                                OutlinedButton(
+                                    onClick = { editingItem = item },
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                                ) {
+                                    Text("Editar")
+                                }
+                                TextButton(
+                                    onClick = { onToggleExclude(item.originalRowIndex) },
+                                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
+                                ) {
+                                    Text("Desestimar", color = MaterialTheme.colorScheme.error)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Sección de apuntes dudosos o que requieren atención
+        val doubtfulItems = summary.inspectedItems.filter { it.isDoubtful && !it.isExcluded }
+        if (doubtfulItems.isNotEmpty()) {
+            item {
+                Text(
+                    text = "⚠️ Apuntes dudosos o a revisar (${doubtfulItems.size})",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = WarningOrange
+                )
+                Text(
+                    text = "Puedes editarlos directamente pulsando sobre ellos o desestimarlos para que no se importen:",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            items(doubtfulItems) { item ->
+                OutlinedCard(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.outlinedCardColors(
+                        containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.15f)
+                    )
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Fila ${item.originalRowIndex + 1}: ${item.doubtReason ?: "Revisar datos"}",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                TextButton(onClick = { editingItem = item }) {
+                                    Text("Editar")
+                                }
+                                TextButton(onClick = { onToggleExclude(item.originalRowIndex) }) {
+                                    Text("Desestimar", color = MaterialTheme.colorScheme.error)
+                                }
+                            }
+                        }
+                        Text(
+                            text = "Valores crudos: ${item.originalCells.filter { it.isNotBlank() }.joinToString(" | ")}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+        }
+
+        // Muestra de apuntes válidos listos para importar
+        item {
+            Text(
+                text = "Vista previa de apuntes listos para importar (${summary.validTransactionsCount})",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold
+            )
+        }
+
+        val sampleValid = summary.inspectedItems.filter { !it.isDoubtful && !it.isExcluded }.take(5)
+        items(sampleValid) { item ->
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = item.concept,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = "Fecha: ${item.operationDate?.format(dateFormatter) ?: "-"} | Saldo: ${item.balance?.let { "$it €" } ?: "-"}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    val amt = item.amount ?: java.math.BigDecimal.ZERO
+                    Text(
+                        text = "${if (amt > java.math.BigDecimal.ZERO) "+" else ""}$amt €",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = if (amt >= java.math.BigDecimal.ZERO) IncomeGreen else ExpenseRed
+                    )
+                }
+            }
+        }
+
+        // Botones de acción final
+        item {
+            Spacer(modifier = Modifier.height(10.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                OutlinedButton(
+                    onClick = onBackToMapping,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("Atrás (Mapeo)")
+                }
+                Button(
+                    onClick = onConfirmImport,
+                    enabled = summary.validTransactionsCount > 0,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("Confirmar e Importar (${summary.validTransactionsCount})")
+                }
+            }
+        }
+    }
+
+    if (editingItem != null) {
+        EditDoubtfulItemDialog(
+            item = editingItem!!,
+            onDismiss = { editingItem = null },
+            onSave = { date, concept, amount, balance ->
+                onUpdateItem(editingItem!!.originalRowIndex, date, concept, amount, balance)
+                editingItem = null
+            }
+        )
+    }
+}
+
+@Composable
+fun EditDoubtfulItemDialog(
+    item: com.oryctes.micontabilidad.domain.model.InspectedTransactionItem,
+    onDismiss: () -> Unit,
+    onSave: (java.time.LocalDate?, String, java.math.BigDecimal?, java.math.BigDecimal?) -> Unit
+) {
+    val dateFormatter = java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy")
+    var dateText by remember { mutableStateOf(item.operationDate?.format(dateFormatter) ?: "") }
+    var conceptText by remember { mutableStateOf(item.concept) }
+    var amountText by remember { mutableStateOf(item.amount?.toPlainString() ?: "") }
+    var balanceText by remember { mutableStateOf(item.balance?.toPlainString() ?: "") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Corregir Apunte Dudoso", fontWeight = FontWeight.Bold) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    text = "Modifica los datos para que el apunte sea reconocido e incorporado:",
+                    style = MaterialTheme.typography.bodySmall
+                )
+                OutlinedTextField(
+                    value = dateText,
+                    onValueChange = { dateText = it },
+                    label = { Text("Fecha (dd/MM/yyyy)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = conceptText,
+                    onValueChange = { conceptText = it },
+                    label = { Text("Concepto") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = amountText,
+                    onValueChange = { amountText = it },
+                    label = { Text("Cuantía / Importe (ej. -25.50 o 120.00)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = balanceText,
+                    onValueChange = { balanceText = it },
+                    label = { Text("Saldo (opcional)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val parsedDate = com.oryctes.micontabilidad.domain.normalizer.DateNormalizer.parseDate(dateText)
+                    val parsedAmount = com.oryctes.micontabilidad.domain.normalizer.AmountNormalizer.parseAmount(amountText)
+                    val parsedBalance = com.oryctes.micontabilidad.domain.normalizer.AmountNormalizer.parseAmount(balanceText)
+                    onSave(parsedDate, conceptText.trim(), parsedAmount, parsedBalance)
+                }
+            ) {
+                Text("Guardar y Validar")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancelar")
+            }
+        }
+    )
 }

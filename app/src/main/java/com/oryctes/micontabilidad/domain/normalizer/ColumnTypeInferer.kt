@@ -14,7 +14,7 @@ object ColumnTypeInferer {
 
     private val HEADER_KEYWORDS = listOf(
         "fecha", "date", "concepto", "concept", "descripcion", "description",
-        "detalle", "movimiento", "datos", "importe", "amount", "cuantia", "saldo", "balance",
+        "detalle", "movimiento", "datos", "importe", "amount", "cuantia", "cuantía", "saldo", "balance",
         "cargo", "abono", "debe", "haber", "operacion", "comentario"
     )
 
@@ -223,7 +223,7 @@ object ColumnTypeInferer {
         // Comprobar Importe prioritariamente por cabecera
         val amountHeaderCol = effectiveHeaders.indexOfFirst {
             val h = it.lowercase()
-            (h.contains("importe") || h.contains("cuantia") || h.contains("monto") || h.contains("amount")) &&
+            (h.contains("importe") || h.contains("cuantia") || h.contains("cuantía") || h.contains("cuanti") || h.contains("monto") || h.contains("amount")) &&
                     !h.contains("saldo") && !h.contains("balance")
         }
 
@@ -267,6 +267,191 @@ object ColumnTypeInferer {
             headerRowIndex = bestHeaderRowIdx,
             detectedHeaders = effectiveHeaders,
             columnSamples = samples
+        )
+    }
+
+    /**
+     * Examina las filas mapeadas del extracto para calcular el resumen de validación
+     * (conteo de apuntes, suma de cuantías, saldo promedio y detección de apuntes dudosos/con errores).
+     */
+    fun validateAndInspectRows(
+        rows: List<com.oryctes.micontabilidad.data.parser.TabularRow>,
+        mapping: ColumnMapping,
+        existingTransactions: List<com.oryctes.micontabilidad.domain.model.Transaction> = emptyList()
+    ): com.oryctes.micontabilidad.domain.model.ImportValidationSummary {
+        val rowsToProcess = rows.drop(mapping.skipHeaderRows.coerceAtLeast(0))
+        val inspectedItems = mutableListOf<com.oryctes.micontabilidad.domain.model.InspectedTransactionItem>()
+
+        var totalAmount = BigDecimal.ZERO
+        var balanceSum = BigDecimal.ZERO
+        var balanceCount = 0
+        var minDate: java.time.LocalDate? = null
+        var maxDate: java.time.LocalDate? = null
+
+        for ((index, row) in rowsToProcess.withIndex()) {
+            val originalRowIdx = index + mapping.skipHeaderRows
+
+            // Extraer y normalizar fecha de operación
+            val rawOpDate = row.cells.getOrNull(mapping.operationDateIndex)
+            val opDate = rawOpDate?.let { DateNormalizer.parseDate(it, mapping.dateFormat) }
+
+            // Extraer y normalizar fecha valor
+            val rawValDate = if (mapping.valueDateIndex >= 0) row.cells.getOrNull(mapping.valueDateIndex) else null
+            val valDate = rawValDate?.let { DateNormalizer.parseDate(it, mapping.dateFormat) }
+
+            // Extraer concepto
+            val rawConcept = if (mapping.conceptIndex >= 0) row.cells.getOrNull(mapping.conceptIndex)?.trim().orEmpty() else ""
+            val rawDetails = if (mapping.conceptDetailsIndex >= 0) row.cells.getOrNull(mapping.conceptDetailsIndex)?.trim().orEmpty() else ""
+
+            // Extraer cuantía / importe
+            var amount: BigDecimal? = if (mapping.amountIndex >= 0) {
+                val rawAmount = row.cells.getOrNull(mapping.amountIndex)
+                val parsed = AmountNormalizer.parseAmount(rawAmount, mapping.decimalSeparator)
+                if (parsed != null) parsed else if (!rawAmount.isNullOrBlank()) {
+                    AmountNormalizer.extractAllAmounts(rawAmount, mapping.decimalSeparator).lastOrNull()
+                } else null
+            } else if (mapping.debitIndex >= 0 && mapping.creditIndex >= 0) {
+                val rawDebit = row.cells.getOrNull(mapping.debitIndex)
+                val rawCredit = row.cells.getOrNull(mapping.creditIndex)
+                AmountNormalizer.resolveDebitCredit(rawDebit, rawCredit, mapping.decimalSeparator)
+            } else null
+
+            // Extraer saldo
+            var balance: BigDecimal? = if (mapping.balanceIndex >= 0) {
+                val rawBal = row.cells.getOrNull(mapping.balanceIndex)
+                AmountNormalizer.parseAmount(rawBal, mapping.decimalSeparator)
+            } else null
+
+            // Comprobación de dudas / anomalías
+            var isDoubtful = false
+            var doubtReason: String? = null
+
+            // Si la fila está totalmente vacía
+            if (row.cells.all { it.isBlank() }) {
+                continue
+            }
+
+            if (opDate == null) {
+                isDoubtful = true
+                doubtReason = if (rawOpDate.isNullOrBlank()) "Fecha de operación vacía" else "Fecha no reconocida: '$rawOpDate'"
+            } else if (rawConcept.isBlank() && rawDetails.isBlank()) {
+                isDoubtful = true
+                doubtReason = "Concepto vacío"
+            } else if (amount == null) {
+                // Intento de rescate si el saldo u otra celda lo tenía
+                if (balance != null && mapping.balanceIndex >= 0) {
+                    val rawBal = row.cells.getOrNull(mapping.balanceIndex)
+                    val balAmounts = AmountNormalizer.extractAllAmounts(rawBal ?: "", mapping.decimalSeparator)
+                    if (balAmounts.size >= 2) {
+                        amount = balAmounts.first()
+                        balance = balAmounts.last()
+                    }
+                }
+                if (amount == null) {
+                    isDoubtful = true
+                    doubtReason = "Cuantía no reconocida o vacía"
+                }
+            }
+
+            val effectiveConcept = if (rawDetails.isNotBlank()) {
+                if (rawConcept.contains(rawDetails, ignoreCase = true)) rawConcept
+                else if (rawDetails.contains(rawConcept, ignoreCase = true)) rawDetails
+                else "$rawConcept - $rawDetails"
+            } else rawConcept
+
+            // Detección de duplicado frente a transacciones ya existentes o dentro del mismo extracto
+            var isPossibleDuplicate = false
+            var duplicateReason: String? = null
+
+            if (!isDoubtful && opDate != null && amount != null) {
+                val candidateTx = com.oryctes.micontabilidad.domain.model.Transaction(
+                    accountId = 0L,
+                    operationDate = opDate,
+                    valueDate = valDate,
+                    concept = effectiveConcept,
+                    amount = amount,
+                    balance = balance,
+                    normalizedHash = "$opDate|$amount|${effectiveConcept.lowercase().trim()}"
+                )
+
+                // 1. Frente a la base de datos existente
+                if (existingTransactions.isNotEmpty() && DeduplicationEngine.isFuzzyDuplicate(candidateTx, existingTransactions)) {
+                    isPossibleDuplicate = true
+                    duplicateReason = "Coincide con apunte previo registrado de fecha próxima e igual importe"
+                }
+
+                // 2. Frente a movimientos previos dentro del mismo extracto analizado
+                if (!isPossibleDuplicate) {
+                    val duplicateInBatch = inspectedItems.find { prev ->
+                        !prev.isDoubtful &&
+                        prev.amount != null &&
+                        prev.amount!!.compareTo(amount) == 0 &&
+                        prev.operationDate != null &&
+                        java.time.temporal.ChronoUnit.DAYS.between(
+                            minOf(prev.operationDate!!, opDate),
+                            maxOf(prev.operationDate!!, opDate)
+                        ) <= 3 &&
+                        (prev.concept.equals(rawConcept, ignoreCase = true) ||
+                         DeduplicationEngine.calculateSimilarity(
+                             DeduplicationEngine.normalizeConcept(prev.concept),
+                             DeduplicationEngine.normalizeConcept(rawConcept)
+                         ) >= 0.55)
+                    }
+                    if (duplicateInBatch != null) {
+                        isPossibleDuplicate = true
+                        duplicateReason = "Mismo importe ($amount €) que apunte en fila ${duplicateInBatch.originalRowIndex + 1} (${duplicateInBatch.operationDate})"
+                    }
+                }
+            }
+
+            val item = com.oryctes.micontabilidad.domain.model.InspectedTransactionItem(
+                originalRowIndex = originalRowIdx,
+                originalCells = row.cells,
+                operationDate = opDate,
+                valueDate = valDate,
+                concept = rawConcept,
+                conceptDetails = rawDetails,
+                amount = amount,
+                balance = balance,
+                isDoubtful = isDoubtful,
+                doubtReason = doubtReason,
+                isPossibleDuplicate = isPossibleDuplicate,
+                duplicateReason = duplicateReason,
+                isExcluded = false
+            )
+            inspectedItems.add(item)
+
+            if (!isDoubtful && amount != null) {
+                totalAmount = totalAmount.add(amount)
+                if (balance != null) {
+                    balanceSum = balanceSum.add(balance)
+                    balanceCount++
+                }
+                if (opDate != null) {
+                    minDate = if (minDate == null || opDate.isBefore(minDate)) opDate else minDate
+                    maxDate = if (maxDate == null || opDate.isAfter(maxDate)) opDate else maxDate
+                }
+            }
+        }
+
+        val avgBalance = if (balanceCount > 0) {
+            balanceSum.divide(BigDecimal(balanceCount), 2, java.math.RoundingMode.HALF_UP)
+        } else null
+
+        val validCount = inspectedItems.count { !it.isDoubtful }
+        val doubtfulCount = inspectedItems.count { it.isDoubtful }
+        val duplicateCount = inspectedItems.count { it.isPossibleDuplicate }
+
+        return com.oryctes.micontabilidad.domain.model.ImportValidationSummary(
+            totalDetectedRows = inspectedItems.size,
+            validTransactionsCount = validCount,
+            doubtfulCount = doubtfulCount,
+            possibleDuplicateCount = duplicateCount,
+            excludedCount = 0,
+            totalAmountSum = totalAmount,
+            averageBalance = avgBalance,
+            dateRange = Pair(minDate, maxDate),
+            inspectedItems = inspectedItems
         )
     }
 

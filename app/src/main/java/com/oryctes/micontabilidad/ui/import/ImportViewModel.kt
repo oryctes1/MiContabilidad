@@ -24,6 +24,7 @@ import kotlinx.coroutines.launch
 enum class ImportStep {
     SELECT_FILE,
     MAPPING_PREVIEW,
+    VALIDATION_SUMMARY,
     IMPORTING,
     RESULT
 }
@@ -45,6 +46,9 @@ data class ImportUiState(
     val isAutoMapped: Boolean = false,
     val detectedAccountInfo: DetectedAccountInfo? = null,
     val saveAsProfileName: String = "",
+    val validationSummary: com.oryctes.micontabilidad.domain.model.ImportValidationSummary? = null,
+    val backupCreatedMessage: String? = null,
+    val canRollback: Boolean = false,
     val importResult: ImportResult? = null,
     val infoMessage: String? = null,
     val errorMessage: String? = null
@@ -52,7 +56,8 @@ data class ImportUiState(
 
 class ImportViewModel(
     private val importRepository: ImportRepository,
-    private val accountRepository: AccountRepository
+    private val accountRepository: AccountRepository,
+    private val transactionRepository: com.oryctes.micontabilidad.domain.repository.TransactionRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ImportUiState())
@@ -64,9 +69,11 @@ class ImportViewModel(
                 accountRepository.getActiveAccounts(),
                 importRepository.getProfiles()
             ) { accounts, profiles ->
+                val latestBatch = importRepository.getLatestBatch()
                 _uiState.value = _uiState.value.copy(
                     accounts = accounts,
                     profiles = profiles,
+                    canRollback = latestBatch != null,
                     selectedAccountId = _uiState.value.selectedAccountId ?: accounts.firstOrNull()?.id
                 )
             }.collect {}
@@ -125,7 +132,7 @@ class ImportViewModel(
                 val accountIdToSelect = existingMatch?.id ?: _uiState.value.selectedAccountId
 
                 val previewStart = if (inferredStructure.headerRowIndex >= 0) {
-                    inferredStructure.headerRowIndex
+                    inferredStructure.headerRowIndex + 1
                 } else 0
 
                 val initialMapping = profile?.mapping ?: inferredStructure.mapping.copy(skipHeaderRows = previewStart)
@@ -222,7 +229,171 @@ class ImportViewModel(
         _uiState.value = _uiState.value.copy(saveAsProfileName = name)
     }
 
-    fun startImport() {
+    fun moveToValidationSummary() {
+        val state = _uiState.value
+        val doc = state.parsedDocument ?: return
+        val mapping = state.columnMapping
+
+        if (!mapping.isValid()) {
+            _uiState.value = state.copy(
+                errorMessage = "Por favor selecciona al menos la fecha de operación, el concepto y la cuantía."
+            )
+            return
+        }
+
+        viewModelScope.launch {
+            val accountId = state.selectedAccountId
+            val existingTxs = if (accountId != null) {
+                transactionRepository.getFilteredTransactions(accountId, null, null, null).first()
+            } else emptyList()
+
+            // Inspeccionar y validar todas las filas cruzando contra duplicados
+            val summary = ColumnTypeInferer.validateAndInspectRows(doc.rows, mapping, existingTxs)
+
+            _uiState.value = _uiState.value.copy(
+                validationSummary = summary,
+                step = ImportStep.VALIDATION_SUMMARY,
+                errorMessage = null
+            )
+        }
+    }
+
+    fun backToMapping() {
+        _uiState.value = _uiState.value.copy(
+            step = ImportStep.MAPPING_PREVIEW,
+            errorMessage = null
+        )
+    }
+
+    fun toggleExcludeItem(originalRowIndex: Int) {
+        val currentSummary = _uiState.value.validationSummary ?: return
+        val updatedList = currentSummary.inspectedItems.map { item ->
+            if (item.originalRowIndex == originalRowIndex) {
+                item.copy(isExcluded = !item.isExcluded)
+            } else item
+        }
+        val validCount = updatedList.count { !it.isDoubtful && !it.isExcluded }
+        val excludedCount = updatedList.count { it.isExcluded }
+        var totalAmount = java.math.BigDecimal.ZERO
+        var balSum = java.math.BigDecimal.ZERO
+        var balCount = 0
+
+        updatedList.filter { !it.isExcluded && !it.isDoubtful }.forEach {
+            it.amount?.let { a -> totalAmount = totalAmount.add(a) }
+            it.balance?.let { b ->
+                balSum = balSum.add(b)
+                balCount++
+            }
+        }
+
+        val avgBal = if (balCount > 0) balSum.divide(java.math.BigDecimal(balCount), 2, java.math.RoundingMode.HALF_UP) else null
+
+        _uiState.value = _uiState.value.copy(
+            validationSummary = currentSummary.copy(
+                inspectedItems = updatedList,
+                validTransactionsCount = validCount,
+                excludedCount = excludedCount,
+                totalAmountSum = totalAmount,
+                averageBalance = avgBal
+            )
+        )
+    }
+
+    fun updateInspectedItem(
+        originalRowIndex: Int,
+        newDate: java.time.LocalDate?,
+        newConcept: String,
+        newAmount: java.math.BigDecimal?,
+        newBalance: java.math.BigDecimal?
+    ) {
+        val currentSummary = _uiState.value.validationSummary ?: return
+        val updatedList = currentSummary.inspectedItems.map { item ->
+            if (item.originalRowIndex == originalRowIndex) {
+                val isStillDoubtful = newDate == null || newConcept.isBlank() || newAmount == null
+                item.copy(
+                    operationDate = newDate,
+                    concept = newConcept,
+                    amount = newAmount,
+                    balance = newBalance,
+                    isDoubtful = isStillDoubtful,
+                    doubtReason = if (isStillDoubtful) "Datos incompletos tras edición" else null,
+                    isPossibleDuplicate = false,
+                    isDuplicateAccepted = true,
+                    duplicateReason = null
+                )
+            } else item
+        }
+
+        val validCount = updatedList.count { !it.isDoubtful && !it.isExcluded }
+        val doubtfulCount = updatedList.count { it.isDoubtful && !it.isExcluded }
+        val duplicateCount = updatedList.count { it.isPossibleDuplicate && !it.isExcluded && !it.isDuplicateAccepted }
+        var totalAmount = java.math.BigDecimal.ZERO
+        var balSum = java.math.BigDecimal.ZERO
+        var balCount = 0
+
+        updatedList.filter { !it.isExcluded && !it.isDoubtful }.forEach {
+            it.amount?.let { a -> totalAmount = totalAmount.add(a) }
+            it.balance?.let { b ->
+                balSum = balSum.add(b)
+                balCount++
+            }
+        }
+        val avgBal = if (balCount > 0) balSum.divide(java.math.BigDecimal(balCount), 2, java.math.RoundingMode.HALF_UP) else null
+
+        _uiState.value = _uiState.value.copy(
+            validationSummary = currentSummary.copy(
+                inspectedItems = updatedList,
+                validTransactionsCount = validCount,
+                doubtfulCount = doubtfulCount,
+                possibleDuplicateCount = duplicateCount,
+                totalAmountSum = totalAmount,
+                averageBalance = avgBal
+            )
+        )
+    }
+
+    fun acceptDuplicate(originalRowIndex: Int) {
+        val currentSummary = _uiState.value.validationSummary ?: return
+        val updatedList = currentSummary.inspectedItems.map { item ->
+            if (item.originalRowIndex == originalRowIndex) {
+                item.copy(
+                    isPossibleDuplicate = false,
+                    isDuplicateAccepted = true,
+                    duplicateReason = null
+                )
+            } else item
+        }
+        val duplicateCount = updatedList.count { it.isPossibleDuplicate && !it.isExcluded && !it.isDuplicateAccepted }
+
+        _uiState.value = _uiState.value.copy(
+            validationSummary = currentSummary.copy(
+                inspectedItems = updatedList,
+                possibleDuplicateCount = duplicateCount
+            )
+        )
+    }
+
+    fun acceptAllDuplicates() {
+        val currentSummary = _uiState.value.validationSummary ?: return
+        val updatedList = currentSummary.inspectedItems.map { item ->
+            if (item.isPossibleDuplicate) {
+                item.copy(
+                    isPossibleDuplicate = false,
+                    isDuplicateAccepted = true,
+                    duplicateReason = null
+                )
+            } else item
+        }
+
+        _uiState.value = _uiState.value.copy(
+            validationSummary = currentSummary.copy(
+                inspectedItems = updatedList,
+                possibleDuplicateCount = 0
+            )
+        )
+    }
+
+    fun confirmImport() {
         val state = _uiState.value
         val accountId = state.selectedAccountId
         if (accountId == null) {
@@ -233,15 +404,8 @@ class ImportViewModel(
         }
 
         val uri = state.selectedFileUri ?: return
-        val doc = state.parsedDocument ?: return
+        val summary = state.validationSummary ?: return
         val mapping = state.columnMapping
-
-        if (!mapping.isValid()) {
-            _uiState.value = state.copy(
-                errorMessage = "Por favor selecciona al menos la fecha de operación, el concepto y la cuantía."
-            )
-            return
-        }
 
         _uiState.value = state.copy(step = ImportStep.IMPORTING, errorMessage = null)
 
@@ -253,30 +417,53 @@ class ImportViewModel(
                         ImportProfile(
                             name = state.saveAsProfileName.trim(),
                             entity = account?.entity ?: "General",
-                            delimiter = doc.detectedDelimiter ?: ";",
-                            charset = doc.detectedCharset ?: "UTF-8",
+                            delimiter = state.parsedDocument?.detectedDelimiter ?: ";",
+                            charset = state.parsedDocument?.detectedCharset ?: "UTF-8",
                             mapping = mapping
                         )
                     )
                 }
 
-                val result = importRepository.executeImport(
+                val result = importRepository.executeImportValidated(
                     accountId = accountId,
                     uri = uri,
                     fileName = state.selectedFileName,
                     mimeType = state.selectedFileMimeType,
                     mapping = mapping,
-                    rows = doc.rows
+                    items = summary.inspectedItems
                 )
 
                 _uiState.value = _uiState.value.copy(
                     step = ImportStep.RESULT,
-                    importResult = result
+                    importResult = result,
+                    canRollback = true
                 )
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
-                    step = ImportStep.MAPPING_PREVIEW,
+                    step = ImportStep.VALIDATION_SUMMARY,
                     errorMessage = "Error durante la importación: ${e.localizedMessage}"
+                )
+            }
+        }
+    }
+
+    fun rollbackLastImport() {
+        viewModelScope.launch {
+            try {
+                val success = importRepository.rollbackLastImport()
+                if (success) {
+                    _uiState.value = _uiState.value.copy(
+                        canRollback = false,
+                        infoMessage = "Se ha revertido y desestimado con éxito la última importación."
+                    )
+                } else {
+                    _uiState.value = _uiState.value.copy(
+                        errorMessage = "No se encontró ninguna importación previa para revertir."
+                    )
+                }
+            } catch (e: Exception) {
+                _uiState.value = _uiState.value.copy(
+                    errorMessage = "Error al revertir la importación: ${e.localizedMessage}"
                 )
             }
         }

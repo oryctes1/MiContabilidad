@@ -24,7 +24,8 @@ enum class TransactionTypeFilter(val title: String) {
     ALL("Todos"),
     INCOME("Ingresos"),
     EXPENSE("Gastos"),
-    CREDIT_CARD("Tarjeta")
+    CREDIT_CARD("Tarjeta"),
+    PENDING_REVIEW("Por revisar")
 }
 
 data class TransactionsFilterState(
@@ -33,7 +34,18 @@ data class TransactionsFilterState(
     val startDate: LocalDate? = null,
     val endDate: LocalDate? = null,
     val searchQuery: String = "",
-    val typeFilter: TransactionTypeFilter = TransactionTypeFilter.ALL
+    val typeFilter: TransactionTypeFilter = TransactionTypeFilter.ALL,
+    val onlyPendingReview: Boolean = false
+)
+
+data class CreditCardReconciliation(
+    val excludedChargesCount: Int = 0,
+    val excludedChargesSum: BigDecimal = BigDecimal.ZERO,      // Total liquidaciones en cuenta (negativo)
+    val actualCardTransactionsCount: Int = 0,
+    val actualCardTransactionsSum: BigDecimal = BigDecimal.ZERO, // Total gastos en tarjeta
+    val pendingSettlementDifference: BigDecimal = BigDecimal.ZERO, // Desfase / pendiente de pago siguiente mes
+    val hasCardAccountOrTransactions: Boolean = false,
+    val isCardStatementsMissing: Boolean = false               // Si hay liquidaciones pero no hay extracto de tarjeta cargado
 )
 
 data class TransactionsSummaryState(
@@ -41,6 +53,11 @@ data class TransactionsSummaryState(
     val totalIncome: BigDecimal = BigDecimal.ZERO,
     val totalExpense: BigDecimal = BigDecimal.ZERO,
     val netTotal: BigDecimal = BigDecimal.ZERO,
+    val rawArithmeticSum: BigDecimal = BigDecimal.ZERO,
+    val averageBalance: BigDecimal? = null,
+    val excludedChargesCount: Int = 0,
+    val excludedChargesSum: BigDecimal = BigDecimal.ZERO,
+    val cardReconciliation: CreditCardReconciliation = CreditCardReconciliation(),
     val contextTitle: String = "Todos los movimientos",
     val contextSubtitle: String = ""
 )
@@ -66,22 +83,25 @@ class TransactionsViewModel(
     private val _selectedTransaction = MutableStateFlow<Transaction?>(null)
     val selectedTransaction: StateFlow<Transaction?> = _selectedTransaction.asStateFlow()
 
-    private val transactionsFlow = _filterState.flatMapLatest { filter ->
-        transactionRepository.getFilteredTransactions(
-            accountId = filter.selectedAccountId,
-            startDate = filter.startDate,
-            endDate = filter.endDate,
-            searchQuery = filter.searchQuery
-        )
+    private val transactionsAndAllFlow = _filterState.flatMapLatest { filter ->
+        combine(
+            transactionRepository.getFilteredTransactions(
+                accountId = filter.selectedAccountId,
+                startDate = filter.startDate,
+                endDate = filter.endDate,
+                searchQuery = filter.searchQuery
+            ),
+            transactionRepository.getFilteredTransactions(null, null, null, null)
+        ) { filtered, all -> Pair(filtered, all) }
     }
 
     val uiState: StateFlow<TransactionsUiState> = combine(
-        transactionsFlow,
+        transactionsAndAllFlow,
         accountRepository.getAllAccounts(),
         transactionRepository.getCategories(),
         _filterState,
         _selectedTransaction
-    ) { txs, accounts, categories, filter, selected ->
+    ) { (txs, allTxs), accounts, categories, filter, selected ->
         val filteredByCategory = if (filter.selectedCategoryId != null) {
             txs.filter { it.categoryId == filter.selectedCategoryId }
         } else {
@@ -93,24 +113,49 @@ class TransactionsViewModel(
             TransactionTypeFilter.INCOME -> filteredByCategory.filter { it.amount > BigDecimal.ZERO }
             TransactionTypeFilter.EXPENSE -> filteredByCategory.filter { it.amount < BigDecimal.ZERO }
             TransactionTypeFilter.CREDIT_CARD -> filteredByCategory.filter { it.isCreditCard }
+            TransactionTypeFilter.PENDING_REVIEW -> filteredByCategory.filter {
+                it.reviewStatus == ReviewStatus.PENDING_REVIEW || it.isPossibleDuplicate
+            }
         }
 
-        // Totales calculados excluyendo cargos y transferencias marcados (para no duplicar gastos)
-        val incomeSum = filteredByType
+        val finalTxs = if (filter.onlyPendingReview) {
+            filteredByType.filter { it.reviewStatus == ReviewStatus.PENDING_REVIEW || it.isPossibleDuplicate }
+        } else {
+            filteredByType
+        }
+
+        // Suma aritmética directa de todos los apuntes visibles (coincide con el extracto bancario)
+        val rawArithmeticSum = finalTxs.fold(BigDecimal.ZERO) { acc, t -> acc.add(t.amount) }
+
+        // Totales calculados excluyendo cargos y transferencias marcados (para no duplicar gastos en la contabilidad)
+        val excludedTxs = finalTxs.filter { it.isExcludedFromTotals }
+        val excludedChargesCount = excludedTxs.size
+        val excludedChargesSum = excludedTxs.fold(BigDecimal.ZERO) { acc, t -> acc.add(t.amount) }
+
+        val incomeSum = finalTxs
             .filter { !it.isExcludedFromTotals && it.amount > BigDecimal.ZERO }
             .fold(BigDecimal.ZERO) { acc, t -> acc.add(t.amount) }
 
-        val expenseSum = filteredByType
+        val expenseSum = finalTxs
             .filter { !it.isExcludedFromTotals && it.amount < BigDecimal.ZERO }
             .fold(BigDecimal.ZERO) { acc, t -> acc.add(t.amount.abs()) }
 
         val netSum = incomeSum.subtract(expenseSum)
 
+        // Saldo promedio
+        val txsWithBalance = finalTxs.mapNotNull { it.balance }
+        val avgBalance = if (txsWithBalance.isNotEmpty()) {
+            val totalBal = txsWithBalance.fold(BigDecimal.ZERO) { acc, b -> acc.add(b) }
+            totalBal.divide(BigDecimal(txsWithBalance.size), 2, java.math.RoundingMode.HALF_UP)
+        } else null
+
         val selectedAccount = accounts.find { it.id == filter.selectedAccountId }
         val selectedCategory = categories.find { it.id == filter.selectedCategoryId }
 
         val contextTitle = buildString {
-            if (selectedAccount != null && selectedCategory != null) {
+            if (filter.onlyPendingReview || filter.typeFilter == TransactionTypeFilter.PENDING_REVIEW) {
+                append("Movimientos para revisión / duplicados")
+            } else if (selectedAccount != null && selectedCategory != null) {
                 append("${selectedAccount.alias} • ${selectedCategory.name}")
             } else if (selectedAccount != null) {
                 append(selectedAccount.alias)
@@ -125,22 +170,66 @@ class TransactionsViewModel(
         }
 
         val contextSubtitle = when {
-            filteredByType.isEmpty() -> "0 movimientos"
-            filteredByType.size == 1 -> "1 movimiento"
-            else -> "${filteredByType.size} movimientos"
+            finalTxs.isEmpty() -> "0 movimientos"
+            finalTxs.size == 1 -> "1 movimiento"
+            else -> "${finalTxs.size} movimientos"
         }
 
+        // Reconciliación / Balance de Tarjetas de Crédito:
+        // 1. Cargos mensuales liquidados en cuenta (normalmente con isExcludedFromTotals)
+        // 2. Apuntes reales directos de tarjeta (isCreditCard = true o pertenecientes a una cuenta de tipo CREDIT_CARD)
+        val cardAccountIds = accounts
+            .filter { it.type == com.oryctes.micontabilidad.domain.model.AccountType.CREDIT_CARD }
+            .map { it.id }
+            .toSet()
+
+        // Apuntes detallados de tarjeta en toda la contabilidad (gastos realizados con la tarjeta)
+        val actualCardTxs = allTxs.filter {
+            (it.isCreditCard || cardAccountIds.contains(it.accountId)) && !it.isExcludedFromTotals
+        }
+        val actualCardCount = actualCardTxs.size
+        val actualCardSum = actualCardTxs.fold(BigDecimal.ZERO) { acc, t -> acc.add(t.amount.abs()) }
+
+        // Liquidaciones de tarjeta cargadas en cuenta (dentro de los movimientos actuales o globales)
+        val cardSettlements = if (filter.selectedAccountId != null) {
+            finalTxs.filter { it.isExcludedFromTotals }
+        } else {
+            allTxs.filter { it.isExcludedFromTotals }
+        }
+        val settlementsCount = cardSettlements.size
+        val settlementsSum = cardSettlements.fold(BigDecimal.ZERO) { acc, t -> acc.add(t.amount.abs()) }
+
+        // Desfase / Pendiente de liquidar: suma de gastos con tarjeta menos suma de liquidaciones pagadas
+        val pendingDifference = actualCardSum.subtract(settlementsSum)
+        val isCardStatementsMissing = settlementsCount > 0 && actualCardCount == 0
+        val hasCardInfo = settlementsCount > 0 || actualCardCount > 0
+
+        val cardReconciliation = CreditCardReconciliation(
+            excludedChargesCount = settlementsCount,
+            excludedChargesSum = settlementsSum.negate(), // Valor negativo contable
+            actualCardTransactionsCount = actualCardCount,
+            actualCardTransactionsSum = actualCardSum,
+            pendingSettlementDifference = pendingDifference,
+            hasCardAccountOrTransactions = hasCardInfo,
+            isCardStatementsMissing = isCardStatementsMissing
+        )
+
         val summary = TransactionsSummaryState(
-            totalCount = filteredByType.size,
+            totalCount = finalTxs.size,
             totalIncome = incomeSum,
             totalExpense = expenseSum,
             netTotal = netSum,
+            rawArithmeticSum = rawArithmeticSum,
+            averageBalance = avgBalance,
+            excludedChargesCount = excludedChargesCount,
+            excludedChargesSum = excludedChargesSum,
+            cardReconciliation = cardReconciliation,
             contextTitle = contextTitle,
             contextSubtitle = contextSubtitle
         )
 
         TransactionsUiState(
-            transactions = filteredByType,
+            transactions = finalTxs,
             accounts = accounts,
             categories = categories,
             filterState = filter,
@@ -174,6 +263,13 @@ class TransactionsViewModel(
 
     fun onTypeFilterChange(type: TransactionTypeFilter) {
         _filterState.value = _filterState.value.copy(typeFilter = type)
+    }
+
+    fun showOnlyPendingReview(show: Boolean) {
+        _filterState.value = _filterState.value.copy(
+            onlyPendingReview = show,
+            typeFilter = if (show) TransactionTypeFilter.PENDING_REVIEW else TransactionTypeFilter.ALL
+        )
     }
 
     fun onDateRangeChange(start: LocalDate?, end: LocalDate?) {

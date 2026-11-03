@@ -50,7 +50,7 @@ val appModule = module {
     viewModel { DashboardViewModel(get(), get()) }
     viewModel { AccountsViewModel(get()) }
     viewModel { TransactionsViewModel(get(), get()) }
-    viewModel { ImportViewModel(get(), get()) }
+    viewModel { ImportViewModel(get(), get(), get()) }
     viewModel { SummariesViewModel(get(), get()) }
     viewModel { SettingsViewModel(get(), get()) }
 }

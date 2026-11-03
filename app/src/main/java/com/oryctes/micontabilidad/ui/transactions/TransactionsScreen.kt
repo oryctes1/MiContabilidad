@@ -85,10 +85,18 @@ enum class DeleteTarget {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TransactionsScreen(
+    initialFilterType: TransactionTypeFilter? = null,
+    onNavigateToImport: (() -> Unit)? = null,
     viewModel: TransactionsViewModel = koinViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
     var showDeleteDialog by remember { mutableStateOf(false) }
+
+    androidx.compose.runtime.LaunchedEffect(initialFilterType) {
+        if (initialFilterType != null) {
+            viewModel.onTypeFilterChange(initialFilterType)
+        }
+    }
 
     val categoryMap = remember(uiState.categories) {
         uiState.categories.associateBy { it.id }
@@ -207,6 +215,7 @@ fun TransactionsScreen(
             TransactionsSummaryCard(
                 summary = uiState.summary,
                 onDeleteClick = { showDeleteDialog = true },
+                onNavigateToImport = onNavigateToImport,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
             )
 
@@ -273,6 +282,7 @@ fun TransactionsScreen(
 fun TransactionsSummaryCard(
     summary: TransactionsSummaryState,
     onDeleteClick: (() -> Unit)? = null,
+    onNavigateToImport: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     Card(
@@ -398,6 +408,166 @@ fun TransactionsSummaryCard(
                             fontWeight = FontWeight.Bold,
                             color = ExpenseRed
                         )
+                    }
+                }
+            }
+
+            // Información bancaria (Suma extracto y Saldo medio)
+            HorizontalDivider(
+                modifier = Modifier.padding(vertical = 8.dp),
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Suma extracto: ${summary.rawArithmeticSum.toPlainString()} €",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                if (summary.averageBalance != null) {
+                    Text(
+                        text = "Saldo medio: ${summary.averageBalance.toPlainString()} €",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            // Reconciliación y advertencia de extractos de tarjetas de crédito
+            val recon = summary.cardReconciliation
+            if (recon.hasCardAccountOrTransactions) {
+                HorizontalDivider(
+                    modifier = Modifier.padding(vertical = 8.dp),
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)
+                )
+
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = if (recon.isCardStatementsMissing) {
+                        MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.35f)
+                    } else {
+                        MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.35f)
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(10.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(
+                                if (recon.isCardStatementsMissing) Icons.Default.Warning else Icons.Default.CreditCard,
+                                contentDescription = null,
+                                tint = if (recon.isCardStatementsMissing) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Conciliación de Tarjetas de Crédito",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = if (recon.isCardStatementsMissing) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(4.dp))
+
+                        // Si hay liquidaciones pero ningún extracto de tarjeta subido
+                        if (recon.isCardStatementsMissing) {
+                            Text(
+                                text = "Se han omitido ${recon.excludedChargesCount} cargos de liquidación mensual (${recon.excludedChargesSum.abs().toPlainString()} €) para evitar duplicidades.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = "⚠️ Recuerda subir los extractos de tus tarjetas para que queden computados tus gastos reales apunte a apunte.",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.error
+                            )
+
+                            if (onNavigateToImport != null) {
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Button(
+                                    onClick = onNavigateToImport,
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = MaterialTheme.colorScheme.error
+                                    ),
+                                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                                    modifier = Modifier.height(32.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.CreditCard,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Subir extracto de tarjeta", style = MaterialTheme.typography.labelSmall)
+                                }
+                            }
+                        } else {
+                            // Si se tienen apuntes de tarjeta y/o liquidaciones
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = "Liquidado en cuenta (${recon.excludedChargesCount}):",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Text(
+                                    text = "-${recon.excludedChargesSum.abs().toPlainString()} €",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = "Gastos reales tarjeta (${recon.actualCardTransactionsCount}):",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Text(
+                                    text = "-${recon.actualCardTransactionsSum.toPlainString()} €",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = ExpenseRed
+                                )
+                            }
+                            HorizontalDivider(
+                                modifier = Modifier.padding(vertical = 4.dp),
+                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                val diff = recon.pendingSettlementDifference
+                                val diffIsHigher = diff > BigDecimal.ZERO
+                                Text(
+                                    text = if (diffIsHigher) "Desfase pendiente prox. mes:" else "Diferencia de liquidación:",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Text(
+                                    text = (if (diffIsHigher) "+" else "") + "${diff.toPlainString()} €",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (diffIsHigher) WarningOrange else MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
                     }
                 }
             }

@@ -86,6 +86,7 @@ dependencies {
     // Parsers de archivos tabulares
     implementation(libs.commons.csv)
     implementation(libs.fastexcel.reader)
+    implementation(libs.apache.poi)
     implementation(libs.stax.api)
     implementation(libs.aalto.xml)
     implementation(libs.pdfbox.android)

@@ -103,8 +103,8 @@ class PdfStatementParser(private val context: Context? = null) : StatementParser
             Log.d("PdfParser", "Total physical lines captured: ${allPhysicalLines.size}")
 
             val keywords = listOf(
-                "f. valor", "fecha", "valor", "categor", "subcat",
-                "descrip", "comentario", "importe", "saldo", "cargo", "abono", "debe", "haber",
+                "f. valor", "f.valor", "fecha", "valor", "categor", "subcat",
+                "descrip", "comentario", "importe", "cuantia", "cuantía", "saldo", "cargo", "abono", "debe", "haber",
                 "movimiento", "datos", "concepto"
             )
 
@@ -145,9 +145,17 @@ class PdfStatementParser(private val context: Context? = null) : StatementParser
                     val isFragKnownHeader = keywords.any { fragTextLower.contains(it) }
                     val isLastKnownHeader = keywords.any { lastTextLower.contains(it) }
 
+                    // Protección explícita para evitar que columnas de importe/cuantía y saldo se fusionen
+                    val isFragAmount = fragTextLower.contains("cuant") || fragTextLower.contains("import")
+                    val isLastAmount = lastTextLower.contains("cuant") || lastTextLower.contains("import")
+                    val isFragSaldo = fragTextLower.contains("saldo")
+                    val isLastSaldo = lastTextLower.contains("saldo")
+                    val isAmountSaldoBoundary = (isLastAmount && isFragSaldo) || (isLastSaldo && isFragAmount)
+
                     // Solo fusionar si la distancia es mínima (< 6pt) y no es una cabecera bancaria separada (ej. "Fecha" y "Fecha valor"),
                     // o si frag es un sufijo como "(€)" o "(EUR)" o last es una abreviatura ("f." o "f" o "nº")
                     val shouldMerge = when {
+                        isAmountSaldoBoundary -> false
                         // Símbolo de moneda o paréntesis
                         fragTextLower.startsWith("(") || fragTextLower.startsWith("€") || fragTextLower == "eur" -> gap < 16f
                         // Abreviatura como "F." en "F. VALOR"
@@ -188,7 +196,7 @@ class PdfStatementParser(private val context: Context? = null) : StatementParser
             // Identificar qué columnas corresponden a importe y saldo para calibrar sus fronteras
             val amountHeaderIdx = columnHeaders.indexOfFirst {
                 val h = it.lowercase()
-                (h.contains("importe") || h.contains("cuantia") || h.contains("amount")) && !h.contains("saldo")
+                (h.contains("importe") || h.contains("cuanti") || h.contains("cuantí") || h.contains("amount")) && !h.contains("saldo")
             }
             val balanceHeaderIdx = columnHeaders.indexOfFirst {
                 val h = it.lowercase()

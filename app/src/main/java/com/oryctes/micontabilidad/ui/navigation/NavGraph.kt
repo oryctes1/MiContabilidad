@@ -35,15 +35,40 @@ fun NavGraph(
         }
         composable(Screen.Import.route) {
             ImportScreen(
-                onNavigateToTransactions = {
-                    navController.navigate(Screen.Transactions.route) {
+                onNavigateToTransactions = { filterType ->
+                    val route = if (filterType != null) {
+                        "${Screen.Transactions.route}?filter=${filterType.name}"
+                    } else {
+                        Screen.Transactions.route
+                    }
+                    navController.navigate(route) {
                         popUpTo(Screen.Dashboard.route)
                     }
                 }
             )
         }
-        composable(Screen.Transactions.route) {
-            TransactionsScreen()
+        composable(
+            route = "${Screen.Transactions.route}?filter={filter}",
+            arguments = listOf(
+                androidx.navigation.navArgument("filter") {
+                    type = androidx.navigation.NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                }
+            )
+        ) { backStackEntry ->
+            val filterParam = backStackEntry.arguments?.getString("filter")
+            val initialFilter = filterParam?.let {
+                try {
+                    com.oryctes.micontabilidad.ui.transactions.TransactionTypeFilter.valueOf(it)
+                } catch (_: Exception) {
+                    null
+                }
+            }
+            TransactionsScreen(
+                initialFilterType = initialFilter,
+                onNavigateToImport = { navController.navigate(Screen.Import.route) }
+            )
         }
         composable(Screen.Summaries.route) {
             SummariesScreen()

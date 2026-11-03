@@ -10,8 +10,8 @@ class ParserFactory(private val context: Context) {
 
         return when {
             lowerName.endsWith(".xlsx") || lowerName.endsWith(".xls") ||
-                    lowerMime.contains("spreadsheet") || lowerMime.contains("excel") -> {
-                XlsxStatementParser()
+                    lowerMime.contains("spreadsheet") || lowerMime.contains("excel") || lowerMime.contains("ms-excel") -> {
+                ExcelStatementParser()
             }
             lowerName.endsWith(".pdf") || lowerMime.contains("pdf") -> {
                 PdfStatementParser(context)

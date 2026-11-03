@@ -66,6 +66,19 @@ interface ImportRepository {
         rows: List<TabularRow>
     ): ImportResult
 
+    suspend fun executeImportValidated(
+        accountId: Long,
+        uri: Uri,
+        fileName: String,
+        mimeType: String?,
+        mapping: ColumnMapping,
+        items: List<com.oryctes.micontabilidad.domain.model.InspectedTransactionItem>
+    ): ImportResult
+
+    suspend fun rollbackLastImport(): Boolean
+
+    suspend fun getLatestBatch(): com.oryctes.micontabilidad.domain.model.ImportBatch?
+
     fun getProfiles(): Flow<List<ImportProfile>>
     suspend fun saveProfile(profile: ImportProfile): Long
     suspend fun deleteProfile(profile: ImportProfile)

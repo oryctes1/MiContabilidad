@@ -402,6 +402,207 @@ class ImportRepositoryImpl(
         return importProfileDao.insertProfile(entity)
     }
 
+    override suspend fun executeImportValidated(
+        accountId: Long,
+        uri: Uri,
+        fileName: String,
+        mimeType: String?,
+        mapping: ColumnMapping,
+        items: List<com.oryctes.micontabilidad.domain.model.InspectedTransactionItem>
+    ): ImportResult = withContext(Dispatchers.IO) {
+        val account = accountDao.getAccountById(accountId)
+            ?: throw IllegalArgumentException("Cuenta no encontrada con ID $accountId")
+
+        val fileBytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: ByteArray(0)
+        val fileHash = MessageDigest.getInstance("SHA-256").digest(fileBytes).joinToString("") { "%02x".format(it) }
+
+        val sourceFileId = sourceFileDao.insertSourceFile(
+            SourceFileEntity(
+                uri = uri.toString(),
+                displayName = fileName,
+                mimeType = mimeType ?: "text/plain",
+                fileHash = fileHash
+            )
+        )
+
+        val batchEntity = ImportBatchEntity(
+            accountId = accountId,
+            sourceFileId = sourceFileId,
+            status = "PROCESSING",
+            totalRows = items.size
+        )
+        val batchId = importBatchDao.insertBatch(batchEntity)
+
+        val existingTxs = transactionDao.getTransactionsByAccount(accountId).map { it.toDomain() }
+        val allCategories = categoryDao.getAllCategories()
+
+        var insertedCount = 0
+        var exactDuplicatesIgnored = 0
+        var possibleDuplicatesMarked = 0
+        val duplicateDetails = mutableListOf<String>()
+        val errors = mutableListOf<String>()
+
+        for (item in items) {
+            if (item.isExcluded) {
+                continue
+            }
+            val rowNum = item.originalRowIndex + 1
+
+            val opDate = item.operationDate
+            if (opDate == null) {
+                errors.add("Fila $rowNum: Fecha de operación inválida o vacía")
+                continue
+            }
+
+            val valDate = item.valueDate ?: opDate
+
+            val concept = if (item.conceptDetails.isNotBlank()) {
+                if (item.concept.contains(item.conceptDetails, ignoreCase = true)) {
+                    item.concept
+                } else if (item.conceptDetails.contains(item.concept, ignoreCase = true)) {
+                    item.conceptDetails
+                } else {
+                    "${item.concept} - ${item.conceptDetails}"
+                }
+            } else item.concept
+
+            if (concept.isBlank()) {
+                errors.add("Fila $rowNum: Concepto vacío")
+                continue
+            }
+
+            val amount = item.amount
+            if (amount == null) {
+                errors.add("Fila $rowNum: Cuantía no válida o ausente")
+                continue
+            }
+
+            val balance = item.balance
+
+            val rawDataForHash = "$opDate|$amount|${concept.lowercase().trim()}"
+            val hash = MessageDigest.getInstance("MD5").digest(rawDataForHash.toByteArray()).joinToString("") { "%02x".format(it) }
+
+            val exactMatch = transactionDao.findByNormalizedHash(accountId, hash)
+            val isExactDuplicate = exactMatch != null
+
+            val categoryId = inferCategory(concept, allCategories)
+            val isCreditCardTx = account.type == com.oryctes.micontabilidad.domain.model.AccountType.CREDIT_CARD ||
+                    concept.contains("Liquidado", ignoreCase = true) ||
+                    fileName.contains("tarjeta", ignoreCase = true)
+            val isSettlementTx = concept.contains(Regex("(cargo|liquidaci[oó]n|pago|recibo)\\s+.*tarjeta|t\\.\\s*visa|tarjeta\\s+visa", RegexOption.IGNORE_CASE))
+
+            val candidateTx = com.oryctes.micontabilidad.domain.model.Transaction(
+                accountId = accountId,
+                operationDate = opDate,
+                valueDate = valDate,
+                concept = concept,
+                amount = amount,
+                balance = balance,
+                currency = account.currency,
+                normalizedHash = hash,
+                sourceFileId = sourceFileId,
+                importBatchId = batchId,
+                categoryId = categoryId,
+                isExcludedFromTotals = isSettlementTx,
+                isCreditCard = isCreditCardTx,
+                notes = if (item.conceptDetails.isNotBlank()) item.conceptDetails else null
+            )
+
+            val isFuzzy = if (!isExactDuplicate) DeduplicationEngine.isFuzzyDuplicate(candidateTx, existingTxs) else false
+            // Si el usuario ya aceptó explícitamente el duplicado o lo editó en la pantalla de validación previa, no se marca para revisión
+            val isDuplicate = (isExactDuplicate || isFuzzy) && !item.isDuplicateAccepted
+
+            val finalHash = if (isExactDuplicate) {
+                "${hash}_dup_${System.currentTimeMillis()}_$rowNum"
+            } else {
+                hash
+            }
+
+            val finalNotes = when {
+                isExactDuplicate -> {
+                    val baseNote = "Fila $rowNum: Coincide exactamente con apunte existente de fecha $opDate"
+                    if (item.conceptDetails.isNotBlank()) "$baseNote | ${item.conceptDetails}" else baseNote
+                }
+                isFuzzy -> {
+                    val baseNote = "Fila $rowNum: Posible duplicado difuso"
+                    if (item.conceptDetails.isNotBlank()) "$baseNote | ${item.conceptDetails}" else baseNote
+                }
+                item.conceptDetails.isNotBlank() -> item.conceptDetails
+                else -> null
+            }
+
+            val txEntity = TransactionEntity(
+                accountId = accountId,
+                operationDate = opDate,
+                valueDate = valDate,
+                concept = concept,
+                amount = amount,
+                balance = balance,
+                currency = account.currency,
+                normalizedHash = finalHash,
+                sourceFileId = sourceFileId,
+                importBatchId = batchId,
+                isPossibleDuplicate = isDuplicate,
+                reviewStatus = if (isDuplicate) ReviewStatus.PENDING_REVIEW else ReviewStatus.CONFIRMED,
+                categoryId = categoryId,
+                isExcludedFromTotals = isSettlementTx,
+                isCreditCard = isCreditCardTx,
+                notes = finalNotes
+            )
+
+            val insertId = transactionDao.insertTransaction(txEntity)
+            if (insertId > 0) {
+                if (isDuplicate) {
+                    possibleDuplicatesMarked++
+                    val amountStr = (if (amount >= java.math.BigDecimal.ZERO) "+" else "") + "${amount.toPlainString()} ${account.currency}"
+                    val reason = if (isExactDuplicate) "Duplicado idéntico" else "Posible duplicado"
+                    duplicateDetails.add("Fila $rowNum: $opDate | $concept | $amountStr ($reason)")
+                } else {
+                    insertedCount++
+                }
+            } else {
+                exactDuplicatesIgnored++
+                duplicateDetails.add("Fila $rowNum: $opDate | $concept | ${amount.toPlainString()} ${account.currency} (Omitido)")
+            }
+        }
+
+        importBatchDao.updateBatch(
+            batchEntity.copy(
+                id = batchId,
+                status = "COMPLETED",
+                insertedCount = insertedCount,
+                duplicateCount = exactDuplicatesIgnored,
+                possibleDuplicateCount = possibleDuplicatesMarked,
+                errorCount = errors.size
+            )
+        )
+
+        ImportResult(
+            batchId = batchId,
+            fileName = fileName,
+            accountAlias = account.alias,
+            totalProcessed = items.size,
+            insertedCount = insertedCount,
+            exactDuplicatesIgnored = exactDuplicatesIgnored,
+            possibleDuplicatesMarked = possibleDuplicatesMarked,
+            duplicateDetails = duplicateDetails,
+            errors = errors
+        )
+    }
+
+    override suspend fun rollbackLastImport(): Boolean = withContext(Dispatchers.IO) {
+        val latestBatch = importBatchDao.getLatestBatch() ?: return@withContext false
+        // Borrar todas las transacciones asociadas al lote
+        transactionDao.deleteByBatchId(latestBatch.id)
+        // Eliminar el lote
+        importBatchDao.deleteBatch(latestBatch)
+        true
+    }
+
+    override suspend fun getLatestBatch(): com.oryctes.micontabilidad.domain.model.ImportBatch? = withContext(Dispatchers.IO) {
+        importBatchDao.getLatestBatch()?.toDomain()
+    }
+
     override suspend fun deleteProfile(profile: ImportProfile) {
         val entity = ImportProfileEntity(
             id = profile.id,

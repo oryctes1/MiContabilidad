@@ -59,6 +59,8 @@ object AccountDetector {
     private val IBAN_REGEX = Regex("\\b([A-Z]{2}\\d{2}[0-9A-Z]{11,28})\\b")
     private val IBAN_SPACED_REGEX = Regex("\\b([A-Z]{2}\\d{2}(?:\\s+[0-9A-Z]{2,4}){3,7})\\b")
     private val CCC_REGEX = Regex("\\b(\\d{4})[\\s\\-](\\d{4})[\\s\\-](\\d{2})[\\s\\-](\\d{10})\\b")
+    private val CCC_SPACED_REGEX = Regex("\\b(\\d{4})[\\s\\-](\\d{4})[\\s\\-](\\d{4})[\\s\\-](\\d{8})\\b")
+    private val CCC_DIGITS_20_REGEX = Regex("\\b(\\d{4})\\s*(\\d{4})\\s*(\\d{2}|\\d{4})\\s*(\\d{8}|\\d{10})\\b")
     private val CARD_MASK_REGEX = Regex("(?:\\*{4,12}|[xX]{4,12}|•{4,12})\\s*([0-9]{4})")
     private val LAST4_REGEX = Regex("(?:terminad[ao] en|cuenta|tarjeta|acabada en|last 4|nº|num|contrato)?[:\\s]*\\b([0-9]{4})\\b", RegexOption.IGNORE_CASE)
 
@@ -90,6 +92,8 @@ object AccountDetector {
         val iban = rawIban?.replace(" ", "")?.replace("-", "")
 
         val cccMatch = CCC_REGEX.find(allText)
+            ?: CCC_SPACED_REGEX.find(allText)
+            ?: CCC_DIGITS_20_REGEX.find(allText)
 
         // 2. Detectar Entidad
         var detectedEntity = "Banco"

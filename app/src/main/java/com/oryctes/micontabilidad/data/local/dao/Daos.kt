@@ -135,8 +135,14 @@ interface ImportBatchDao {
     @Query("SELECT * FROM import_batches ORDER BY importedAt DESC")
     fun getAllBatchesFlow(): Flow<List<ImportBatchEntity>>
 
+    @Query("SELECT * FROM import_batches ORDER BY importedAt DESC LIMIT 1")
+    suspend fun getLatestBatch(): ImportBatchEntity?
+
     @Query("SELECT * FROM import_batches WHERE id = :id")
     suspend fun getById(id: Long): ImportBatchEntity?
+
+    @Delete
+    suspend fun deleteBatch(batch: ImportBatchEntity)
 
     @Query("DELETE FROM import_batches")
     suspend fun deleteAllBatches()

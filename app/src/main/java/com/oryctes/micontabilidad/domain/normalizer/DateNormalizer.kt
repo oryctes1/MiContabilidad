@@ -25,6 +25,17 @@ object DateNormalizer {
         val cleaned = raw.trim().replace("\uFEFF", "")
         if (cleaned.isBlank()) return null
 
+        // Comprobar si es un número de serie de fecha de Excel (ej. 46326.0 o 46326)
+        // El rango de días entre ~1990 y 2070 va de ~32000 a ~62000
+        val numericDate = cleaned.toDoubleOrNull()
+        if (numericDate != null && numericDate >= 30000.0 && numericDate <= 70000.0) {
+            try {
+                // Excel base date: 1899-12-30 (considerando el bug de año bisiesto 1900 de Excel)
+                val days = numericDate.toLong()
+                return LocalDate.of(1899, 12, 30).plusDays(days)
+            } catch (_: Exception) {}
+        }
+
         if (!customPattern.isNullOrBlank()) {
             try {
                 val formatter = DateTimeFormatter.ofPattern(customPattern, Locale.getDefault())
