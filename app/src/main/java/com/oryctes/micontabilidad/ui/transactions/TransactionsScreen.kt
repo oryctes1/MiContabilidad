@@ -26,6 +26,7 @@ import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CreditCard
+import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.DeleteOutline
@@ -64,6 +65,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -75,6 +77,8 @@ import com.oryctes.micontabilidad.ui.theme.IncomeGreen
 import com.oryctes.micontabilidad.ui.theme.WarningOrange
 import org.koin.androidx.compose.koinViewModel
 import java.math.BigDecimal
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
 
 enum class DeleteTarget {
     ALL,
@@ -210,6 +214,17 @@ fun TransactionsScreen(
                     }
                 }
             }
+
+            // Selector de periodos por fecha (Desde / Hasta independientes)
+            DatePeriodFilterRow(
+                startDate = uiState.filterState.startDate,
+                endDate = uiState.filterState.endDate,
+                earliestHistoricalDate = uiState.earliestHistoricalDate,
+                latestHistoricalDate = uiState.latestHistoricalDate,
+                onStartDateSelected = { viewModel.onStartDateChange(it) },
+                onEndDateSelected = { viewModel.onEndDateChange(it) },
+                onClearAllDates = { viewModel.clearDateFilter() }
+            )
 
             // Tarjeta de resumen de totales para la categoría/cuenta seleccionada
             TransactionsSummaryCard(
@@ -1163,5 +1178,169 @@ fun DetailRow(label: String, value: String) {
             style = MaterialTheme.typography.bodySmall,
             fontWeight = FontWeight.Medium
         )
+    }
+}
+
+@Composable
+fun DatePeriodFilterRow(
+    startDate: LocalDate?,
+    endDate: LocalDate?,
+    earliestHistoricalDate: LocalDate?,
+    latestHistoricalDate: LocalDate?,
+    onStartDateSelected: (LocalDate?) -> Unit,
+    onEndDateSelected: (LocalDate?) -> Unit,
+    onClearAllDates: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    val dateFormatter = remember { DateTimeFormatter.ofPattern("dd/MM/yy") }
+
+    fun pickStartDate() {
+        val initial = startDate ?: earliestHistoricalDate ?: LocalDate.now()
+        android.app.DatePickerDialog(
+            context,
+            { _, year, month, dayOfMonth ->
+                onStartDateSelected(LocalDate.of(year, month + 1, dayOfMonth))
+            },
+            initial.year,
+            initial.monthValue - 1,
+            initial.dayOfMonth
+        ).show()
+    }
+
+    fun pickEndDate() {
+        val initial = endDate ?: latestHistoricalDate ?: LocalDate.now()
+        android.app.DatePickerDialog(
+            context,
+            { _, year, month, dayOfMonth ->
+                onEndDateSelected(LocalDate.of(year, month + 1, dayOfMonth))
+            },
+            initial.year,
+            initial.monthValue - 1,
+            initial.dayOfMonth
+        ).show()
+    }
+
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 2.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // Botón activable "Desde"
+        DateFilterChip(
+            labelPrefix = "Desde",
+            selectedDate = startDate,
+            defaultSuggestedDate = earliestHistoricalDate,
+            defaultLabel = "Primer apunte",
+            dateFormatter = dateFormatter,
+            onClick = { pickStartDate() },
+            onClear = { onStartDateSelected(null) },
+            modifier = Modifier.weight(1f)
+        )
+
+        // Botón activable "Hasta"
+        DateFilterChip(
+            labelPrefix = "Hasta",
+            selectedDate = endDate,
+            defaultSuggestedDate = latestHistoricalDate ?: LocalDate.now(),
+            defaultLabel = "Hoy / Último",
+            dateFormatter = dateFormatter,
+            onClick = { pickEndDate() },
+            onClear = { onEndDateSelected(null) },
+            modifier = Modifier.weight(1f)
+        )
+
+        // Botón rápido para limpiar ambos extremos si alguno está activo
+        if (startDate != null || endDate != null) {
+            IconButton(
+                onClick = onClearAllDates,
+                modifier = Modifier.size(36.dp)
+            ) {
+                Icon(
+                    Icons.Default.Close,
+                    contentDescription = "Limpiar rango de fechas",
+                    tint = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun DateFilterChip(
+    labelPrefix: String,
+    selectedDate: LocalDate?,
+    defaultSuggestedDate: LocalDate?,
+    defaultLabel: String,
+    dateFormatter: DateTimeFormatter,
+    onClick: () -> Unit,
+    onClear: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val isCustomActive = selectedDate != null
+    val displayDate = selectedDate ?: defaultSuggestedDate
+    val dateText = displayDate?.format(dateFormatter) ?: defaultLabel
+
+    Surface(
+        modifier = modifier
+            .height(38.dp)
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(10.dp),
+        color = if (isCustomActive) {
+            MaterialTheme.colorScheme.primaryContainer
+        } else {
+            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+        },
+        border = if (isCustomActive) {
+            androidx.compose.foundation.BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary)
+        } else {
+            androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+        }
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.weight(1f)
+            ) {
+                Icon(
+                    Icons.Default.DateRange,
+                    contentDescription = null,
+                    modifier = Modifier.size(15.dp),
+                    tint = if (isCustomActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = "$labelPrefix: $dateText",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = if (isCustomActive) FontWeight.Bold else FontWeight.Medium,
+                    color = if (isCustomActive) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+
+            if (isCustomActive) {
+                IconButton(
+                    onClick = onClear,
+                    modifier = Modifier.size(22.dp)
+                ) {
+                    Icon(
+                        Icons.Default.Close,
+                        contentDescription = "Limpiar $labelPrefix",
+                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                        modifier = Modifier.size(14.dp)
+                    )
+                }
+            }
+        }
     }
 }

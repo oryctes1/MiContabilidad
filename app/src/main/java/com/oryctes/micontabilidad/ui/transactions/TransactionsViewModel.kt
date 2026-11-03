@@ -68,7 +68,9 @@ data class TransactionsUiState(
     val categories: List<Category> = emptyList(),
     val filterState: TransactionsFilterState = TransactionsFilterState(),
     val selectedTransaction: Transaction? = null,
-    val summary: TransactionsSummaryState = TransactionsSummaryState()
+    val summary: TransactionsSummaryState = TransactionsSummaryState(),
+    val earliestHistoricalDate: LocalDate? = null,
+    val latestHistoricalDate: LocalDate? = null
 )
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -169,10 +171,20 @@ class TransactionsViewModel(
             }
         }
 
+        val earliestHistoricalDate = allTxs.minOfOrNull { it.operationDate }
+        val latestHistoricalDate = allTxs.maxOfOrNull { it.operationDate }
+
+        val datePeriodText = when {
+            filter.startDate != null && filter.endDate != null -> " • ${filter.startDate} al ${filter.endDate}"
+            filter.startDate != null -> " • Desde ${filter.startDate}"
+            filter.endDate != null -> " • Hasta ${filter.endDate}"
+            else -> ""
+        }
+
         val contextSubtitle = when {
-            finalTxs.isEmpty() -> "0 movimientos"
-            finalTxs.size == 1 -> "1 movimiento"
-            else -> "${finalTxs.size} movimientos"
+            finalTxs.isEmpty() -> "0 movimientos$datePeriodText"
+            finalTxs.size == 1 -> "1 movimiento$datePeriodText"
+            else -> "${finalTxs.size} movimientos$datePeriodText"
         }
 
         // Reconciliación / Balance de Tarjetas de Crédito:
@@ -234,7 +246,9 @@ class TransactionsViewModel(
             categories = categories,
             filterState = filter,
             selectedTransaction = selected,
-            summary = summary
+            summary = summary,
+            earliestHistoricalDate = earliestHistoricalDate,
+            latestHistoricalDate = latestHistoricalDate
         )
     }.stateIn(
         scope = viewModelScope,
@@ -274,6 +288,18 @@ class TransactionsViewModel(
 
     fun onDateRangeChange(start: LocalDate?, end: LocalDate?) {
         _filterState.value = _filterState.value.copy(startDate = start, endDate = end)
+    }
+
+    fun onStartDateChange(start: LocalDate?) {
+        _filterState.value = _filterState.value.copy(startDate = start)
+    }
+
+    fun onEndDateChange(end: LocalDate?) {
+        _filterState.value = _filterState.value.copy(endDate = end)
+    }
+
+    fun clearDateFilter() {
+        _filterState.value = _filterState.value.copy(startDate = null, endDate = null)
     }
 
     fun selectTransaction(tx: Transaction?) {
