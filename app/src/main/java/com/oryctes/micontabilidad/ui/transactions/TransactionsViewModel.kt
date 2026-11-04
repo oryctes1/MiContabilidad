@@ -417,6 +417,16 @@ class TransactionsViewModel(
         }
     }
 
+    fun invertTransactionSign(tx: Transaction) {
+        viewModelScope.launch {
+            val updated = tx.copy(amount = tx.amount.negate())
+            transactionRepository.updateTransaction(updated)
+            if (_selectedTransaction.value?.id == tx.id) {
+                _selectedTransaction.value = updated
+            }
+        }
+    }
+
     fun updateTransactionCategory(tx: Transaction, categoryId: Long?) {
         viewModelScope.launch {
             // Si la categoría asignada es "Ahorro", marcar automáticamente exclusión para que no compute como gasto

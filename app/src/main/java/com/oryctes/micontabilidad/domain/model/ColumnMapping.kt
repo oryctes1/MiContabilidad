@@ -11,6 +11,7 @@ data class ColumnMapping(
     val balanceIndex: Int = -1,
     val dateFormat: String? = null,        // dd/MM/yyyy, yyyy-MM-dd, etc.
     val decimalSeparator: Char? = null,    // ',' o '.'
+    val invertAmountSign: Boolean = false, // Invertir signo (+ a - / - a +) para extractos de tarjeta donde las compras vienen en positivo
     val skipHeaderRows: Int = 1
 ) {
     fun isValid(): Boolean {

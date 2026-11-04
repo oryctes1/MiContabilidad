@@ -250,6 +250,14 @@ object ColumnTypeInferer {
             }
         }
 
+        val isCardHeader = effectiveHeaders.any {
+            val h = it.lowercase()
+            h.contains("tarjeta") || h.contains("visa") || h.contains("mastercard") || h.contains("crédito") || h.contains("credito")
+        } || rawHeaders.any {
+            val h = it.lowercase()
+            h.contains("tarjeta") || h.contains("visa") || h.contains("mastercard")
+        }
+
         val mapping = ColumnMapping(
             operationDateIndex = opDateCol,
             valueDateIndex = valDateCol,
@@ -259,6 +267,7 @@ object ColumnTypeInferer {
             debitIndex = debitCol,
             creditIndex = creditCol,
             balanceIndex = balanceCol,
+            invertAmountSign = isCardHeader,
             skipHeaderRows = dataStartIndex
         )
 
@@ -372,6 +381,11 @@ object ColumnTypeInferer {
                         }
                     }
                 }
+            }
+
+            // Inversión de signo si el extracto lo requiere (ej. extractos de tarjeta de crédito donde las compras figuran en positivo)
+            if (amount != null && mapping.invertAmountSign) {
+                amount = amount.negate()
             }
 
             // Comprobación de dudas / anomalías

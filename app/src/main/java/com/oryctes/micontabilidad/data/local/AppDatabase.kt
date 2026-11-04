@@ -31,7 +31,7 @@ import kotlinx.coroutines.launch
         ImportProfileEntity::class,
         CategoryEntity::class
     ],
-    version = 5,
+    version = 6,
     exportSchema = true
 )
 @TypeConverters(Converters::class)
@@ -88,13 +88,32 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_5_6 = object : androidx.room.migration.Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                var columnExists = false
+                val cursor = db.query("PRAGMA table_info(import_profiles)")
+                while (cursor.moveToNext()) {
+                    val nameIndex = cursor.getColumnIndex("name")
+                    if (nameIndex != -1 && cursor.getString(nameIndex) == "invertAmountSign") {
+                        columnExists = true
+                        break
+                    }
+                }
+                cursor.close()
+
+                if (!columnExists) {
+                    db.execSQL("ALTER TABLE import_profiles ADD COLUMN invertAmountSign INTEGER NOT NULL DEFAULT 0")
+                }
+            }
+        }
+
         fun buildDatabase(context: Context): AppDatabase {
             return Room.databaseBuilder(
                 context.applicationContext,
                 AppDatabase::class.java,
                 DATABASE_NAME
             )
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
             .fallbackToDestructiveMigration()
             .addCallback(object : Callback() {
                 override fun onCreate(db: SupportSQLiteDatabase) {

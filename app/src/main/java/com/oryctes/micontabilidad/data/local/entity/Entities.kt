@@ -261,6 +261,7 @@ data class ImportProfileEntity(
     val balanceIndex: Int = -1,
     val dateFormat: String? = null,
     val decimalSeparator: Char? = null,
+    val invertAmountSign: Boolean = false,
     val skipHeaderRows: Int = 1
 )
 

@@ -214,6 +214,10 @@ class ImportRepositoryImpl(
                     continue
                 }
 
+                if (mapping.invertAmountSign) {
+                    amount = amount.negate()
+                }
+
                 // Saldo (opcional)
                 val balance = if (mapping.balanceIndex >= 0) {
                     val rawBal = row.cells.getOrNull(mapping.balanceIndex)
@@ -375,6 +379,7 @@ class ImportRepositoryImpl(
                         balanceIndex = it.balanceIndex,
                         dateFormat = it.dateFormat,
                         decimalSeparator = it.decimalSeparator,
+                        invertAmountSign = it.invertAmountSign,
                         skipHeaderRows = it.skipHeaderRows
                     )
                 )
@@ -399,6 +404,7 @@ class ImportRepositoryImpl(
             balanceIndex = profile.mapping.balanceIndex,
             dateFormat = profile.mapping.dateFormat,
             decimalSeparator = profile.mapping.decimalSeparator,
+            invertAmountSign = profile.mapping.invertAmountSign,
             skipHeaderRows = profile.mapping.skipHeaderRows
         )
         return importProfileDao.insertProfile(entity)

@@ -90,9 +90,16 @@ class ImportViewModel(
             detected = _uiState.value.detectedAccountInfo,
             accounts = _uiState.value.accounts
         )
+        val isCard = currentTarget?.type == AccountType.CREDIT_CARD || currentTarget?.type == AccountType.DEBIT_CARD
+        val updatedMapping = if (isCard) {
+            _uiState.value.columnMapping.copy(invertAmountSign = true)
+        } else {
+            _uiState.value.columnMapping
+        }
         _uiState.value = _uiState.value.copy(
             selectedAccountId = accountId,
-            accountMismatch = mismatch
+            accountMismatch = mismatch,
+            columnMapping = updatedMapping
         )
     }
 
@@ -103,10 +110,18 @@ class ImportViewModel(
     fun applyDetectedAccount() {
         val mismatch = _uiState.value.accountMismatch ?: return
         if (mismatch.matchingExistingAccount != null) {
+            val isCard = mismatch.matchingExistingAccount.type == AccountType.CREDIT_CARD ||
+                    mismatch.matchingExistingAccount.type == AccountType.DEBIT_CARD
+            val updatedMapping = if (isCard) {
+                _uiState.value.columnMapping.copy(invertAmountSign = true)
+            } else {
+                _uiState.value.columnMapping
+            }
             _uiState.value = _uiState.value.copy(
                 selectedAccountId = mismatch.matchingExistingAccount.id,
                 accountMismatch = null,
-                showMismatchDialog = false
+                showMismatchDialog = false,
+                columnMapping = updatedMapping
             )
         } else {
             _uiState.value = _uiState.value.copy(
@@ -171,7 +186,18 @@ class ImportViewModel(
                     inferredStructure.headerRowIndex + 1
                 } else 0
 
-                val initialMapping = profile?.mapping ?: inferredStructure.mapping.copy(skipHeaderRows = previewStart)
+                val targetAccount = _uiState.value.accounts.find { it.id == accountIdToSelect } ?: currentTarget
+                val isCardAccount = targetAccount?.type == AccountType.CREDIT_CARD || targetAccount?.type == AccountType.DEBIT_CARD
+                val isCardDoc = detected?.type == AccountType.CREDIT_CARD ||
+                        fileName.contains("tarjeta", ignoreCase = true) ||
+                        fileName.contains("visa", ignoreCase = true) ||
+                        fileName.contains("mastercard", ignoreCase = true) ||
+                        parsed.headers.any { it.contains("tarjeta", ignoreCase = true) || it.contains("visa", ignoreCase = true) }
+
+                val shouldInvert = profile?.mapping?.invertAmountSign ?: (isCardAccount || isCardDoc || inferredStructure.mapping.invertAmountSign)
+
+                val baseMapping = profile?.mapping ?: inferredStructure.mapping.copy(skipHeaderRows = previewStart)
+                val initialMapping = baseMapping.copy(invertAmountSign = shouldInvert)
 
                 _uiState.value = _uiState.value.copy(
                     parsedDocument = parsed,

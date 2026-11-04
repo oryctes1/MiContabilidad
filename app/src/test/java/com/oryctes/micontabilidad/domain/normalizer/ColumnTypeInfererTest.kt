@@ -85,4 +85,40 @@ class ColumnTypeInfererTest {
         assertEquals("117.04", result.columnSamples[4])
         assertEquals("56,353.67", result.columnSamples[5])
     }
+
+    @Test
+    fun testInferCreditCardHeadersDetectsInvertAmountSign() {
+        val headers = listOf("Fecha", "Concepto", "Tarjeta VISA Classic", "Importe")
+        val rows = listOf(
+            listOf("31/10/2026", "COMPRA MERCADONA", "**** 1234", "45.50"),
+            listOf("30/10/2026", "GASOLINERA REPSOL", "**** 1234", "60.00")
+        )
+
+        val result = ColumnTypeInferer.inferFromRows(headers, rows)
+        assertNotNull(result)
+        org.junit.Assert.assertTrue(result.mapping.invertAmountSign)
+    }
+
+    @Test
+    fun testCreditCardExtractInvertsAmountSign() {
+        val mapping = com.oryctes.micontabilidad.domain.model.ColumnMapping(
+            operationDateIndex = 0,
+            conceptIndex = 1,
+            amountIndex = 2,
+            invertAmountSign = true,
+            skipHeaderRows = 0
+        )
+        val rows = listOf(
+            com.oryctes.micontabilidad.data.parser.TabularRow(0, listOf("31/10/2026", "COMPRA MERCADONA", "45.50")),
+            com.oryctes.micontabilidad.data.parser.TabularRow(1, listOf("30/10/2026", "GASOLINERA REPSOL", "60.00")),
+            com.oryctes.micontabilidad.data.parser.TabularRow(2, listOf("29/10/2026", "DEVOLUCION COMPRA", "-10.00"))
+        )
+
+        val summary = ColumnTypeInferer.validateAndInspectRows(rows, mapping)
+        assertEquals(3, summary.validTransactionsCount)
+        assertEquals(java.math.BigDecimal("-45.50"), summary.inspectedItems[0].amount)
+        assertEquals(java.math.BigDecimal("-60.00"), summary.inspectedItems[1].amount)
+        assertEquals(java.math.BigDecimal("10.00"), summary.inspectedItems[2].amount)
+        assertEquals(java.math.BigDecimal("-95.50"), summary.totalAmountSum)
+    }
 }

@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -50,6 +51,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
@@ -308,6 +310,9 @@ fun TransactionsScreen(
                 },
                 onToggleExclude = {
                     viewModel.toggleExcludeFromTotals(tx)
+                },
+                onInvertSign = {
+                    viewModel.invertTransactionSign(tx)
                 }
             )
         }
@@ -1106,7 +1111,8 @@ fun TransactionDetailDialog(
     onDismiss: () -> Unit,
     onDelete: () -> Unit,
     onToggleCreditCard: () -> Unit,
-    onToggleExclude: () -> Unit
+    onToggleExclude: () -> Unit,
+    onInvertSign: () -> Unit = {}
 ) {
     var categoryMenuExpanded by remember { mutableStateOf(false) }
 
@@ -1256,6 +1262,34 @@ fun TransactionDetailDialog(
                         checked = transaction.isExcludedFromTotals,
                         onCheckedChange = { onToggleExclude() }
                     )
+                }
+
+                // Control: Invertir signo (+ / -)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Invertir signo (+ / -)",
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            text = if (transaction.amount < BigDecimal.ZERO) "Actualmente gasto (-). Cambiar a ingreso (+)" else "Actualmente ingreso (+). Cambiar a gasto (-)",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    OutlinedButton(
+                        onClick = onInvertSign,
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp)
+                    ) {
+                        Text(if (transaction.amount < BigDecimal.ZERO) "(+) Ingreso" else "(-) Gasto")
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(4.dp))
