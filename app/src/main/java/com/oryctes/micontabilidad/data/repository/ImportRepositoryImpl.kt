@@ -242,7 +242,9 @@ class ImportRepositoryImpl(
                 val isExactDuplicate = exactMatch != null
 
                 // 5. Categorización automática sugerida
-                val categoryId = inferCategory(concept, allCategories)
+                val inferredCat = inferCategory(concept, allCategories, amount)
+                val categoryId = inferredCat?.id?.takeIf { it > 0 }
+                val isAhorro = inferredCat?.name.equals("Ahorro", ignoreCase = true)
 
                 val isCreditCardTx = account.type == com.oryctes.micontabilidad.domain.model.AccountType.CREDIT_CARD ||
                     concept.contains("Liquidado", ignoreCase = true) ||
@@ -263,7 +265,7 @@ class ImportRepositoryImpl(
                     sourceFileId = sourceFileId,
                     importBatchId = batchId,
                     categoryId = categoryId,
-                    isExcludedFromTotals = isSettlementTx,
+                    isExcludedFromTotals = isSettlementTx || isAhorro,
                     isCreditCard = isCreditCardTx,
                     notes = if (rawDetails.isNotBlank()) rawDetails else null
                 )
@@ -485,7 +487,9 @@ class ImportRepositoryImpl(
             val exactMatch = transactionDao.findByNormalizedHash(accountId, hash)
             val isExactDuplicate = exactMatch != null
 
-            val categoryId = inferCategory(concept, allCategories)
+            val inferredCat = inferCategory(concept, allCategories, amount)
+            val categoryId = inferredCat?.id?.takeIf { it > 0 }
+            val isAhorro = inferredCat?.name.equals("Ahorro", ignoreCase = true)
             val isCreditCardTx = account.type == com.oryctes.micontabilidad.domain.model.AccountType.CREDIT_CARD ||
                     concept.contains("Liquidado", ignoreCase = true) ||
                     fileName.contains("tarjeta", ignoreCase = true)
@@ -503,7 +507,7 @@ class ImportRepositoryImpl(
                 sourceFileId = sourceFileId,
                 importBatchId = batchId,
                 categoryId = categoryId,
-                isExcludedFromTotals = isSettlementTx,
+                isExcludedFromTotals = isSettlementTx || isAhorro,
                 isCreditCard = isCreditCardTx,
                 notes = if (item.conceptDetails.isNotBlank()) item.conceptDetails else null
             )
@@ -612,7 +616,7 @@ class ImportRepositoryImpl(
         importProfileDao.deleteProfile(entity)
     }
 
-    private fun inferCategory(concept: String, categories: List<CategoryEntity>): Long? {
-        return com.oryctes.micontabilidad.domain.normalizer.CategoryInferer.inferCategoryId(concept, categories)
+    private fun inferCategory(concept: String, categories: List<CategoryEntity>, amount: java.math.BigDecimal? = null): CategoryEntity? {
+        return com.oryctes.micontabilidad.domain.normalizer.CategoryInferer.inferCategory(concept, categories, amount)
     }
 }

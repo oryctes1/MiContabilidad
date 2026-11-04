@@ -4,6 +4,7 @@ import com.oryctes.micontabilidad.data.local.dao.CategoryDao
 import com.oryctes.micontabilidad.data.local.dao.ImportBatchDao
 import com.oryctes.micontabilidad.data.local.dao.SourceFileDao
 import com.oryctes.micontabilidad.data.local.dao.TransactionDao
+import com.oryctes.micontabilidad.data.local.entity.CategoryEntity
 import com.oryctes.micontabilidad.data.local.entity.TransactionEntity
 import com.oryctes.micontabilidad.domain.model.Category
 import com.oryctes.micontabilidad.domain.model.CategorySummary
@@ -90,11 +91,65 @@ class TransactionRepositoryImpl(
             }
         }
 
+        // Asegurar que existan y estén sincronizadas las nuevas categorías oficiales definidas
+        var existingCategories = categoryDao.getAllCategories()
+        val legacyNames = setOf(
+            "Nómina / Ingresos",
+            "Supermercado y Alimentación",
+            "Vivienda y Suministros",
+            "Restauración y Ocio",
+            "Transporte y Combustible",
+            "Salud y Cuidado Personal",
+            "Compras y Tecnología",
+            "Finanzas e Impuestos",
+            "ONGs"
+        )
+        val hasLegacyCategories = existingCategories.any { it.name in legacyNames }
+        val isMissingCategories = existingCategories.size < com.oryctes.micontabilidad.domain.normalizer.CategoryInferer.DEFAULT_CATEGORIES.size
+
+        // Limpiar la keyword "otros" si estuviera guardada en la base de datos para "Otros gastos"
+        val otrosGastos = existingCategories.find { it.name.equals("Otros gastos", ignoreCase = true) }
+        if (otrosGastos != null && otrosGastos.keywordsCsv.contains("otros")) {
+            val cleanedKeywords = otrosGastos.keywordsCsv.split(",")
+                .map { it.trim() }
+                .filter { !it.equals("otros", ignoreCase = true) }
+                .joinToString(",")
+            categoryDao.updateCategory(otrosGastos.copy(keywordsCsv = cleanedKeywords))
+        }
+
+        if (hasLegacyCategories || isMissingCategories) {
+            // Insertar o actualizar todas las categorías oficiales
+            for (def in com.oryctes.micontabilidad.domain.normalizer.CategoryInferer.DEFAULT_CATEGORIES) {
+                val existing = existingCategories.find { it.name.equals(def.name, ignoreCase = true) }
+                if (existing == null) {
+                    categoryDao.insertCategory(def)
+                } else {
+                    // Asegurar que el tipo y keywords estén actualizados si faltaban
+                    categoryDao.updateCategory(
+                        existing.copy(
+                            type = def.type,
+                            keywordsCsv = if (existing.keywordsCsv.isBlank()) def.keywordsCsv else existing.keywordsCsv
+                        )
+                    )
+                }
+            }
+
+            // Si hay categorías obsoletas o duplicadas (como la antigua "ONGs"), eliminarlas
+            val officialNames = com.oryctes.micontabilidad.domain.normalizer.CategoryInferer.DEFAULT_CATEGORIES.map { it.name.lowercase() }.toSet()
+            for (cat in existingCategories) {
+                if (cat.name in legacyNames && !officialNames.contains(cat.name.lowercase())) {
+                    categoryDao.deleteCategory(cat)
+                }
+            }
+
+            // Recategorizar todos los movimientos con las nuevas categorías oficiales
+            recategorizeAllTransactions()
+            return
+        }
         val uncategorized = transactionDao.getUncategorizedTransactions()
         if (uncategorized.isEmpty()) return
-        val categories = categoryDao.getAllCategories()
         for (tx in uncategorized) {
-            val catId = com.oryctes.micontabilidad.domain.normalizer.CategoryInferer.inferCategoryId(tx.concept, categories)
+            val catId = com.oryctes.micontabilidad.domain.normalizer.CategoryInferer.inferCategoryId(tx.concept, existingCategories, tx.amount)
             if (catId != null) {
                 transactionDao.updateTransaction(tx.copy(categoryId = catId))
             }
@@ -184,6 +239,51 @@ class TransactionRepositoryImpl(
 
     override fun getCategories(): Flow<List<Category>> {
         return categoryDao.getAllCategoriesFlow().map { list -> list.map { it.toDomain() } }
+    }
+
+    override suspend fun createCategory(category: Category): Long {
+        return categoryDao.insertCategory(CategoryEntity.fromDomain(category))
+    }
+
+    override suspend fun updateCategory(category: Category) {
+        categoryDao.updateCategory(CategoryEntity.fromDomain(category))
+    }
+
+    override suspend fun deleteCategory(category: Category) {
+        categoryDao.deleteCategory(CategoryEntity.fromDomain(category))
+    }
+
+    override suspend fun recategorizeAllTransactions() {
+        // Asegurar que la categoría "Otros gastos" no tenga la keyword "otros"
+        val currentCategories = categoryDao.getAllCategories()
+        val otrosGastos = currentCategories.find { it.name.equals("Otros gastos", ignoreCase = true) }
+        if (otrosGastos != null && otrosGastos.keywordsCsv.contains("otros")) {
+            val cleanedKeywords = otrosGastos.keywordsCsv.split(",")
+                .map { it.trim() }
+                .filter { !it.equals("otros", ignoreCase = true) }
+                .joinToString(",")
+            categoryDao.updateCategory(otrosGastos.copy(keywordsCsv = cleanedKeywords))
+        }
+
+        val categories = categoryDao.getAllCategories()
+        val all = transactionDao.getAllTransactionsFlow().first()
+        for (tx in all) {
+            // Si el usuario fijó la categoría manualmente, no sobreescribirla con la varita mágica
+            if (tx.isCategoryManuallyAssigned) {
+                continue
+            }
+
+            val inferred = com.oryctes.micontabilidad.domain.normalizer.CategoryInferer.inferCategory(tx.concept, categories, tx.amount)
+            val isAhorro = inferred?.name.equals("Ahorro", ignoreCase = true)
+            val newExcluded = tx.isExcludedFromTotals || isAhorro
+            val updated = tx.copy(
+                categoryId = inferred?.id?.takeIf { it > 0 },
+                isExcludedFromTotals = newExcluded
+            )
+            if (updated.categoryId != tx.categoryId || updated.isExcludedFromTotals != tx.isExcludedFromTotals) {
+                transactionDao.updateTransaction(updated)
+            }
+        }
     }
 
     override suspend fun exportToCsv(accountId: Long?): String {

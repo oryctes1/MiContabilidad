@@ -84,4 +84,12 @@ class NormalizerTest {
         val extractedPure = AmountNormalizer.extractAllAmounts(pureText)
         assertEquals(0, extractedPure.size)
     }
+
+    @Test
+    fun testCategoryInferer_amznMatchesHogar() {
+        val concept = "Pago en AMZN Mktp ES*ZX9A27YR4 LUXEMBOURG LU - Compras (otros)"
+        val norm = DeduplicationEngine.normalizeConcept(concept)
+        val matchesAmzn = CategoryInferer.matchesKeyword(norm, "amzn")
+        org.junit.Assert.assertTrue(matchesAmzn)
+    }
 }

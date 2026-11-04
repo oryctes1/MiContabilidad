@@ -26,6 +26,7 @@ data class Transaction(
     val categoryId: Long? = null,
     val isExcludedFromTotals: Boolean = false,
     val isCreditCard: Boolean = false,
+    val isCategoryManuallyAssigned: Boolean = false,
     val notes: String? = null,
     val createdAt: Long = System.currentTimeMillis()
 )

@@ -187,6 +187,7 @@ data class TransactionEntity(
     val isPossibleDuplicate: Boolean = false,
     val reviewStatus: ReviewStatus = ReviewStatus.CONFIRMED,
     val categoryId: Long? = null,
+    val isCategoryManuallyAssigned: Boolean = false,
     val isExcludedFromTotals: Boolean = false,
     val isCreditCard: Boolean = false,
     val notes: String? = null,
@@ -207,6 +208,7 @@ data class TransactionEntity(
         isPossibleDuplicate = isPossibleDuplicate,
         reviewStatus = reviewStatus,
         categoryId = categoryId,
+        isCategoryManuallyAssigned = isCategoryManuallyAssigned,
         isExcludedFromTotals = isExcludedFromTotals,
         isCreditCard = isCreditCard,
         notes = notes,
@@ -229,6 +231,7 @@ data class TransactionEntity(
             isPossibleDuplicate = model.isPossibleDuplicate,
             reviewStatus = model.reviewStatus,
             categoryId = model.categoryId,
+            isCategoryManuallyAssigned = model.isCategoryManuallyAssigned,
             isExcludedFromTotals = model.isExcludedFromTotals,
             isCreditCard = model.isCreditCard,
             notes = model.notes,
@@ -271,14 +274,27 @@ data class CategoryEntity(
     val name: String,
     val colorHex: String = "#3F51B5",
     val iconName: String = "category",
-    val keywordsCsv: String = ""
+    val keywordsCsv: String = "",
+    val type: String = "EXPENSE"
 ) {
     fun toDomain(): Category = Category(
         id = id,
         name = name,
         colorHex = colorHex,
         iconName = iconName,
-        keywords = if (keywordsCsv.isBlank()) emptyList() else keywordsCsv.split(",").map { it.trim() }
+        keywords = if (keywordsCsv.isBlank()) emptyList() else keywordsCsv.split(",").map { it.trim() },
+        type = try {
+            com.oryctes.micontabilidad.domain.model.CategoryType.valueOf(type)
+        } catch (_: Exception) {
+            when {
+                name.equals("Ahorro", ignoreCase = true) -> com.oryctes.micontabilidad.domain.model.CategoryType.SAVING
+                name.equals("Nóminas", ignoreCase = true) ||
+                name.equals("Bizum", ignoreCase = true) ||
+                name.equals("Intereses", ignoreCase = true) ||
+                (name.equals("Extras", ignoreCase = true) && type == "INCOME") -> com.oryctes.micontabilidad.domain.model.CategoryType.INCOME
+                else -> com.oryctes.micontabilidad.domain.model.CategoryType.EXPENSE
+            }
+        }
     )
 
     companion object {
@@ -287,7 +303,8 @@ data class CategoryEntity(
             name = c.name,
             colorHex = c.colorHex,
             iconName = c.iconName,
-            keywordsCsv = c.keywords.joinToString(",")
+            keywordsCsv = c.keywords.joinToString(","),
+            type = c.type.name
         )
     }
 }

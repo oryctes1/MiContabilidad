@@ -9,6 +9,7 @@ import com.oryctes.micontabilidad.domain.repository.AccountRepository
 import com.oryctes.micontabilidad.domain.repository.ImportRepository
 import com.oryctes.micontabilidad.domain.repository.TransactionRepository
 import com.oryctes.micontabilidad.ui.accounts.AccountsViewModel
+import com.oryctes.micontabilidad.ui.categories.CategoriesViewModel
 import com.oryctes.micontabilidad.ui.dashboard.DashboardViewModel
 import com.oryctes.micontabilidad.ui.import.ImportViewModel
 import com.oryctes.micontabilidad.ui.settings.SettingsViewModel
@@ -52,5 +53,6 @@ val appModule = module {
     viewModel { TransactionsViewModel(get(), get()) }
     viewModel { ImportViewModel(get(), get(), get()) }
     viewModel { SummariesViewModel(get(), get()) }
+    viewModel { CategoriesViewModel(get()) }
     viewModel { SettingsViewModel(get(), get()) }
 }

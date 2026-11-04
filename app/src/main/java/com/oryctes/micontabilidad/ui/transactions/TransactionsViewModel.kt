@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -104,10 +105,10 @@ class TransactionsViewModel(
         _filterState,
         _selectedTransaction
     ) { (txs, allTxs), accounts, categories, filter, selected ->
-        val filteredByCategory = if (filter.selectedCategoryId != null) {
-            txs.filter { it.categoryId == filter.selectedCategoryId }
-        } else {
-            txs
+        val filteredByCategory = when (filter.selectedCategoryId) {
+            null -> txs
+            -1L -> txs.filter { it.categoryId == null }
+            else -> txs.filter { it.categoryId == filter.selectedCategoryId }
         }
 
         val filteredByType = when (filter.typeFilter) {
@@ -152,11 +153,16 @@ class TransactionsViewModel(
         } else null
 
         val selectedAccount = accounts.find { it.id == filter.selectedAccountId }
-        val selectedCategory = categories.find { it.id == filter.selectedCategoryId }
+        val isUncategorizedFilter = filter.selectedCategoryId == -1L
+        val selectedCategory = if (isUncategorizedFilter) null else categories.find { it.id == filter.selectedCategoryId }
 
         val contextTitle = buildString {
             if (filter.onlyPendingReview || filter.typeFilter == TransactionTypeFilter.PENDING_REVIEW) {
                 append("Movimientos para revisión / duplicados")
+            } else if (selectedAccount != null && isUncategorizedFilter) {
+                append("${selectedAccount.alias} • Sin categoría")
+            } else if (isUncategorizedFilter) {
+                append("Movimientos sin categoría")
             } else if (selectedAccount != null && selectedCategory != null) {
                 append("${selectedAccount.alias} • ${selectedCategory.name}")
             } else if (selectedAccount != null) {
@@ -188,25 +194,34 @@ class TransactionsViewModel(
         }
 
         // Reconciliación / Balance de Tarjetas de Crédito:
-        // 1. Cargos mensuales liquidados en cuenta (normalmente con isExcludedFromTotals)
-        // 2. Apuntes reales directos de tarjeta (isCreditCard = true o pertenecientes a una cuenta de tipo CREDIT_CARD)
+        // Exclusivo de tarjetas de crédito para no mezclar con otras exclusiones (como productos de ahorro/inversión).
+        val cardSettlementRegex = Regex("(cargo|liquidaci[oó]n|pago|recibo)\\s+.*tarjeta|t\\.\\s*visa|tarjeta\\s+visa", RegexOption.IGNORE_CASE)
+
         val cardAccountIds = accounts
             .filter { it.type == com.oryctes.micontabilidad.domain.model.AccountType.CREDIT_CARD }
             .map { it.id }
             .toSet()
 
-        // Apuntes detallados de tarjeta en toda la contabilidad (gastos realizados con la tarjeta)
-        val actualCardTxs = allTxs.filter {
-            (it.isCreditCard || cardAccountIds.contains(it.accountId)) && !it.isExcludedFromTotals
+        // 1. Apuntes detallados de gastos directos de tarjeta en el periodo seleccionado (o cuenta)
+        // No deben depender de si la pestaña activa es "Gastos", "Tarjeta" o si hay un texto en el buscador.
+        // Se calculan sobre todas las transacciones históricas filtradas por fecha (y cuenta si aplica).
+        val periodTxs = allTxs.filter { tx ->
+            val matchesAccount = if (filter.selectedAccountId != null) tx.accountId == filter.selectedAccountId else true
+            val matchesStart = if (filter.startDate != null) tx.operationDate >= filter.startDate else true
+            val matchesEnd = if (filter.endDate != null) tx.operationDate <= filter.endDate else true
+            matchesAccount && matchesStart && matchesEnd
+        }
+
+        // Gastos reales con tarjeta (apuntes individuales)
+        val actualCardTxs = periodTxs.filter {
+            (it.isCreditCard || cardAccountIds.contains(it.accountId)) && !cardSettlementRegex.containsMatchIn(it.concept)
         }
         val actualCardCount = actualCardTxs.size
         val actualCardSum = actualCardTxs.fold(BigDecimal.ZERO) { acc, t -> acc.add(t.amount.abs()) }
 
-        // Liquidaciones de tarjeta cargadas en cuenta (dentro de los movimientos actuales o globales)
-        val cardSettlements = if (filter.selectedAccountId != null) {
-            finalTxs.filter { it.isExcludedFromTotals }
-        } else {
-            allTxs.filter { it.isExcludedFromTotals }
+        // Liquidaciones de tarjeta cargadas en la cuenta corriente (los 11 cargos mensuales que pagan la tarjeta)
+        val cardSettlements = periodTxs.filter {
+            cardSettlementRegex.containsMatchIn(it.concept)
         }
         val settlementsCount = cardSettlements.size
         val settlementsSum = cardSettlements.fold(BigDecimal.ZERO) { acc, t -> acc.add(t.amount.abs()) }
@@ -276,7 +291,21 @@ class TransactionsViewModel(
     }
 
     fun onTypeFilterChange(type: TransactionTypeFilter) {
-        _filterState.value = _filterState.value.copy(typeFilter = type)
+        // Al cambiar de tipo (ej. de Ingresos a Gastos), si la categoría seleccionada no pertenece al nuevo tipo, se resetea a "Todas"
+        val currentCatId = _filterState.value.selectedCategoryId
+        val currentCategories = uiState.value.categories
+        val currentCat = currentCategories.find { it.id == currentCatId }
+
+        val shouldResetCategory = when (type) {
+            TransactionTypeFilter.INCOME -> currentCat != null && currentCat.type != com.oryctes.micontabilidad.domain.model.CategoryType.INCOME
+            TransactionTypeFilter.EXPENSE -> currentCat != null && currentCat.type != com.oryctes.micontabilidad.domain.model.CategoryType.EXPENSE && currentCat.type != com.oryctes.micontabilidad.domain.model.CategoryType.SAVING
+            else -> false
+        }
+
+        _filterState.value = _filterState.value.copy(
+            typeFilter = type,
+            selectedCategoryId = if (shouldResetCategory) null else currentCatId
+        )
     }
 
     fun showOnlyPendingReview(show: Boolean) {
@@ -381,6 +410,25 @@ class TransactionsViewModel(
     fun toggleCreditCard(tx: Transaction) {
         viewModelScope.launch {
             val updated = tx.copy(isCreditCard = !tx.isCreditCard)
+            transactionRepository.updateTransaction(updated)
+            if (_selectedTransaction.value?.id == tx.id) {
+                _selectedTransaction.value = updated
+            }
+        }
+    }
+
+    fun updateTransactionCategory(tx: Transaction, categoryId: Long?) {
+        viewModelScope.launch {
+            // Si la categoría asignada es "Ahorro", marcar automáticamente exclusión para que no compute como gasto
+            val categories = transactionRepository.getCategories().first()
+            val category = categoryId?.let { id -> categories.find { it.id == id } }
+            val isAhorro = category?.name.equals("Ahorro", ignoreCase = true)
+
+            val updated = tx.copy(
+                categoryId = categoryId,
+                isCategoryManuallyAssigned = true,
+                isExcludedFromTotals = if (isAhorro) true else tx.isExcludedFromTotals
+            )
             transactionRepository.updateTransaction(updated)
             if (_selectedTransaction.value?.id == tx.id) {
                 _selectedTransaction.value = updated

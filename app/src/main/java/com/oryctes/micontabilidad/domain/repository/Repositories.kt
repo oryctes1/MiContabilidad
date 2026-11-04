@@ -46,6 +46,10 @@ interface TransactionRepository {
     fun getMonthlySummaries(accountId: Long?, year: Int): Flow<List<MonthlySummary>>
     fun getCategorySummaries(accountId: Long?, yearMonth: YearMonth): Flow<List<CategorySummary>>
     fun getCategories(): Flow<List<Category>>
+    suspend fun createCategory(category: Category): Long
+    suspend fun updateCategory(category: Category)
+    suspend fun deleteCategory(category: Category)
+    suspend fun recategorizeAllTransactions()
     suspend fun exportToCsv(accountId: Long?): String
 }
 

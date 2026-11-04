@@ -10,12 +10,33 @@ import kotlin.math.max
 object DeduplicationEngine {
 
     /**
-     * Normaliza un concepto eliminando espacios extras, signos de puntuación repetidos
-     * y convirtiendo a minúsculas para un hash reproducible.
+     * Elimina tildes y diacríticos (ej. á->a, é->e, í->i, ó->o, ú->u, ü->u).
+     * Conserva la ñ.
+     */
+    fun removeAccents(text: String): String {
+        return text
+            .replace('á', 'a')
+            .replace('é', 'e')
+            .replace('í', 'i')
+            .replace('ó', 'o')
+            .replace('ú', 'u')
+            .replace('ü', 'u')
+            .replace('Á', 'a')
+            .replace('É', 'e')
+            .replace('Í', 'i')
+            .replace('Ó', 'o')
+            .replace('Ú', 'u')
+            .replace('Ü', 'u')
+    }
+
+    /**
+     * Normaliza un concepto eliminando espacios extras, signos de puntuación repetidos,
+     * tildes y convirtiendo a minúsculas para comparaciones y hash reproducibles.
      */
     fun normalizeConcept(concept: String): String {
-        return concept.lowercase()
-            .replace(Regex("[^a-z0-9áéíóúñü]"), " ")
+        val withoutAccents = removeAccents(concept.lowercase())
+        return withoutAccents
+            .replace(Regex("[^a-z0-9ñ]"), " ")
             .replace(Regex("\\s+"), " ")
             .trim()
     }

@@ -15,6 +15,7 @@ sealed class Screen(val route: String, val title: String, val icon: ImageVector)
     data object Import : Screen("import", "Importar", Icons.Default.UploadFile)
     data object Transactions : Screen("transactions", "Movimientos", Icons.Default.List)
     data object Summaries : Screen("summaries", "Informes", Icons.Default.BarChart)
+    data object Categories : Screen("categories", "Categorías", Icons.Default.Settings)
     data object Settings : Screen("settings", "Ajustes", Icons.Default.Settings)
 
     companion object {

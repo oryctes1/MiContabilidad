@@ -6,6 +6,7 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import com.oryctes.micontabilidad.ui.accounts.AccountsScreen
+import com.oryctes.micontabilidad.ui.categories.CategoriesScreen
 import com.oryctes.micontabilidad.ui.dashboard.DashboardScreen
 import com.oryctes.micontabilidad.ui.import.ImportScreen
 import com.oryctes.micontabilidad.ui.settings.SettingsScreen
@@ -44,6 +45,9 @@ fun NavGraph(
                     navController.navigate(route) {
                         popUpTo(Screen.Dashboard.route)
                     }
+                },
+                onNavigateToCategories = {
+                    navController.navigate(Screen.Categories.route)
                 }
             )
         }
@@ -72,6 +76,11 @@ fun NavGraph(
         }
         composable(Screen.Summaries.route) {
             SummariesScreen()
+        }
+        composable(Screen.Categories.route) {
+            CategoriesScreen(
+                onNavigateBack = { navController.popBackStack() }
+            )
         }
         composable(Screen.Settings.route) {
             SettingsScreen()

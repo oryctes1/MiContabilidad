@@ -31,7 +31,7 @@ import kotlinx.coroutines.launch
         ImportProfileEntity::class,
         CategoryEntity::class
     ],
-    version = 3,
+    version = 5,
     exportSchema = true
 )
 @TypeConverters(Converters::class)
@@ -62,31 +62,49 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_3_4 = object : androidx.room.migration.Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE categories ADD COLUMN type TEXT NOT NULL DEFAULT 'EXPENSE'")
+            }
+        }
+
+        val MIGRATION_4_5 = object : androidx.room.migration.Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // Comprobar si la columna ya existe antes de añadirla para evitar duplicados si se migró manualmente
+                var columnExists = false
+                val cursor = db.query("PRAGMA table_info(transactions)")
+                while (cursor.moveToNext()) {
+                    val nameIndex = cursor.getColumnIndex("name")
+                    if (nameIndex != -1 && cursor.getString(nameIndex) == "isCategoryManuallyAssigned") {
+                        columnExists = true
+                        break
+                    }
+                }
+                cursor.close()
+
+                if (!columnExists) {
+                    db.execSQL("ALTER TABLE transactions ADD COLUMN isCategoryManuallyAssigned INTEGER NOT NULL DEFAULT 0")
+                }
+            }
+        }
+
         fun buildDatabase(context: Context): AppDatabase {
             return Room.databaseBuilder(
                 context.applicationContext,
                 AppDatabase::class.java,
                 DATABASE_NAME
             )
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
             .fallbackToDestructiveMigration()
             .addCallback(object : Callback() {
                 override fun onCreate(db: SupportSQLiteDatabase) {
                     super.onCreate(db)
-                    // Precarga de categorías básicas
+                    // Precarga de categorías básicas oficiales
                     CoroutineScope(Dispatchers.IO).launch {
-                        val initialCategories = listOf(
-                            CategoryEntity(name = "Nómina / Ingresos", colorHex = "#4CAF50", iconName = "payments", keywordsCsv = "nomina,transferencia a su favor,salario,ingreso,abono,honorarios"),
-                            CategoryEntity(name = "Supermercado y Alimentación", colorHex = "#FF9800", iconName = "shopping_cart", keywordsCsv = "mercadona,carrefour,dia,lidl,alcampo,eroski,aldi,consum,bonpreu"),
-                            CategoryEntity(name = "Vivienda y Suministros", colorHex = "#2196F3", iconName = "home", keywordsCsv = "alquiler,comunidad,iberdrola,endesa,naturgy,vodafone,movistar,orange,aqua,gas"),
-                            CategoryEntity(name = "Restauración y Ocio", colorHex = "#E91E63", iconName = "restaurant", keywordsCsv = "restaurante,bar,cafeteria,burger,mcdonald,uber eats,glovo,cine,netflix,spotify"),
-                            CategoryEntity(name = "Transporte y Combustible", colorHex = "#9C27B0", iconName = "directions_car", keywordsCsv = "repsol,cepsa,bp,gasolinera,renfe,metro,emt,peaje,uber,cabify"),
-                            CategoryEntity(name = "Salud y Cuidado Personal", colorHex = "#00BCD4", iconName = "local_hospital", keywordsCsv = "farmacia,clinica,dentista,hospital,optica,peluqueria"),
-                            CategoryEntity(name = "Compras y Tecnología", colorHex = "#607D8B", iconName = "shopping_bag", keywordsCsv = "amazon,aliexpress,zara,el corte ingles,ikea,mediamarkt,apple"),
-                            CategoryEntity(name = "Finanzas e Impuestos", colorHex = "#795548", iconName = "account_balance", keywordsCsv = "comision,interes,hacienda,irpf,tributo,seguro,cuota")
-                        )
                         val database = buildDatabase(context)
-                        initialCategories.forEach { database.categoryDao().insertCategory(it) }
+                        com.oryctes.micontabilidad.domain.normalizer.CategoryInferer.DEFAULT_CATEGORIES.forEach {
+                            database.categoryDao().insertCategory(it)
+                        }
                     }
                 }
             }).build()

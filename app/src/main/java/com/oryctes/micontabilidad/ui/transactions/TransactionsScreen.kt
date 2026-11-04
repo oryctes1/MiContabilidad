@@ -31,6 +31,8 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.DeleteSweep
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.Warning
@@ -69,6 +71,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.oryctes.micontabilidad.domain.model.Category
 import com.oryctes.micontabilidad.domain.model.ReviewStatus
 import com.oryctes.micontabilidad.domain.model.Transaction
 import com.oryctes.micontabilidad.ui.components.EmptyState
@@ -134,32 +137,33 @@ fun TransactionsScreen(
             OutlinedTextField(
                 value = uiState.filterState.searchQuery,
                 onValueChange = { viewModel.onSearchQueryChange(it) },
-                placeholder = { Text("Buscar por concepto...") },
-                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                placeholder = { Text("Buscar por concepto...", style = MaterialTheme.typography.bodySmall) },
+                textStyle = MaterialTheme.typography.bodySmall,
+                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(18.dp)) },
                 singleLine = true,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 4.dp)
+                    .padding(horizontal = 16.dp, vertical = 2.dp)
             )
 
             // Filtros rápidos de Tipo (Todos / Ingresos / Gastos) y Cuentas
             LazyRow(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 2.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    .padding(horizontal = 16.dp, vertical = 1.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 items(TransactionTypeFilter.entries) { type ->
                     FilterChip(
                         selected = uiState.filterState.typeFilter == type,
                         onClick = { viewModel.onTypeFilterChange(type) },
-                        label = { Text(type.title) },
+                        label = { Text(type.title, style = MaterialTheme.typography.labelSmall) },
                         leadingIcon = if (type == TransactionTypeFilter.CREDIT_CARD) {
                             {
                                 Icon(
                                     Icons.Default.CreditCard,
                                     contentDescription = null,
-                                    modifier = Modifier.size(16.dp)
+                                    modifier = Modifier.size(14.dp)
                                 )
                             }
                         } else null
@@ -174,42 +178,55 @@ fun TransactionsScreen(
                             val newId = if (uiState.filterState.selectedAccountId == account.id) null else account.id
                             viewModel.onAccountFilterChange(newId)
                         },
-                        label = { Text(account.alias) },
+                        label = { Text(account.alias, style = MaterialTheme.typography.labelSmall) },
                         leadingIcon = {
                             Icon(
                                 Icons.Default.AccountBalance,
                                 contentDescription = null,
-                                modifier = Modifier.size(16.dp)
+                                modifier = Modifier.size(14.dp)
                             )
                         }
                     )
                 }
             }
 
-            // Filtros rápidos por Categoría (Todas / Hogar / Nómina / Supermercado / etc.)
-            if (uiState.categories.isNotEmpty()) {
+            // Filtros rápidos por Categoría adaptados al tipo seleccionado (Todos / Ingresos / Gastos)
+            val filteredCategories = remember(uiState.categories, uiState.filterState.typeFilter) {
+                when (uiState.filterState.typeFilter) {
+                    TransactionTypeFilter.INCOME -> uiState.categories.filter {
+                        it.type == com.oryctes.micontabilidad.domain.model.CategoryType.INCOME
+                    }
+                    TransactionTypeFilter.EXPENSE -> uiState.categories.filter {
+                        it.type == com.oryctes.micontabilidad.domain.model.CategoryType.EXPENSE ||
+                        it.type == com.oryctes.micontabilidad.domain.model.CategoryType.SAVING
+                    }
+                    else -> uiState.categories
+                }
+            }
+
+            if (filteredCategories.isNotEmpty()) {
                 LazyRow(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 2.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        .padding(horizontal = 16.dp, vertical = 1.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     item {
                         FilterChip(
                             selected = uiState.filterState.selectedCategoryId == null,
                             onClick = { viewModel.onCategoryFilterChange(null) },
-                            label = { Text("Todas las categorías") }
+                            label = { Text("Todas las categorías", style = MaterialTheme.typography.labelSmall) }
                         )
                     }
 
-                    items(uiState.categories) { category ->
+                    items(filteredCategories) { category ->
                         FilterChip(
                             selected = uiState.filterState.selectedCategoryId == category.id,
                             onClick = {
                                 val newId = if (uiState.filterState.selectedCategoryId == category.id) null else category.id
                                 viewModel.onCategoryFilterChange(newId)
                             },
-                            label = { Text(category.name) }
+                            label = { Text(category.name, style = MaterialTheme.typography.labelSmall) }
                         )
                     }
                 }
@@ -231,7 +248,7 @@ fun TransactionsScreen(
                 summary = uiState.summary,
                 onDeleteClick = { showDeleteDialog = true },
                 onNavigateToImport = onNavigateToImport,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp)
             )
 
             // Lista de movimientos o Estado vacío
@@ -244,8 +261,8 @@ fun TransactionsScreen(
                 LazyColumn(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(horizontal = 16.dp, vertical = 4.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                        .padding(horizontal = 16.dp, vertical = 2.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     items(uiState.transactions, key = { it.id }) { tx ->
                         val categoryName = tx.categoryId?.let { categoryMap[it]?.name }
@@ -278,6 +295,10 @@ fun TransactionsScreen(
             TransactionDetailDialog(
                 transaction = tx,
                 categoryName = catName,
+                categories = uiState.categories,
+                onSelectCategory = { newCatId ->
+                    viewModel.updateTransactionCategory(tx, newCatId)
+                },
                 onDismiss = { viewModel.selectTransaction(null) },
                 onDelete = {
                     viewModel.deleteTransaction(tx)
@@ -454,8 +475,10 @@ fun TransactionsSummaryCard(
             // Reconciliación y advertencia de extractos de tarjetas de crédito
             val recon = summary.cardReconciliation
             if (recon.hasCardAccountOrTransactions) {
+                var isReconExpanded by remember { mutableStateOf(false) }
+
                 HorizontalDivider(
-                    modifier = Modifier.padding(vertical = 8.dp),
+                    modifier = Modifier.padding(vertical = 6.dp),
                     color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)
                 )
 
@@ -466,121 +489,137 @@ fun TransactionsSummaryCard(
                     } else {
                         MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.35f)
                     },
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { isReconExpanded = !isReconExpanded }
                 ) {
                     Column(
-                        modifier = Modifier.padding(10.dp)
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
                             modifier = Modifier.fillMaxWidth()
                         ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Icon(
+                                    if (recon.isCardStatementsMissing) Icons.Default.Warning else Icons.Default.CreditCard,
+                                    contentDescription = null,
+                                    tint = if (recon.isCardStatementsMissing) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "Conciliación de Tarjetas de Crédito",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (recon.isCardStatementsMissing) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+                                )
+                            }
                             Icon(
-                                if (recon.isCardStatementsMissing) Icons.Default.Warning else Icons.Default.CreditCard,
-                                contentDescription = null,
+                                if (isReconExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                                contentDescription = if (isReconExpanded) "Ocultar" else "Mostrar",
                                 tint = if (recon.isCardStatementsMissing) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = "Conciliación de Tarjetas de Crédito",
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = if (recon.isCardStatementsMissing) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+                                modifier = Modifier.size(20.dp)
                             )
                         }
 
-                        Spacer(modifier = Modifier.height(4.dp))
+                        if (isReconExpanded) {
+                            Spacer(modifier = Modifier.height(4.dp))
 
-                        // Si hay liquidaciones pero ningún extracto de tarjeta subido
-                        if (recon.isCardStatementsMissing) {
-                            Text(
-                                text = "Se han omitido ${recon.excludedChargesCount} cargos de liquidación mensual (${recon.excludedChargesSum.abs().toPlainString()} €) para evitar duplicidades.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                text = "⚠️ Recuerda subir los extractos de tus tarjetas para que queden computados tus gastos reales apunte a apunte.",
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.error
-                            )
+                            // Si hay liquidaciones pero ningún extracto de tarjeta subido
+                            if (recon.isCardStatementsMissing) {
+                                Text(
+                                    text = "Se han omitido ${recon.excludedChargesCount} cargos de liquidación mensual (${recon.excludedChargesSum.abs().toPlainString()} €) para evitar duplicidades.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = "⚠️ Recuerda subir los extractos de tus tarjetas para que queden computados tus gastos reales apunte a apunte.",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.error
+                                )
 
-                            if (onNavigateToImport != null) {
-                                Spacer(modifier = Modifier.height(6.dp))
-                                Button(
-                                    onClick = onNavigateToImport,
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = MaterialTheme.colorScheme.error
-                                    ),
-                                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-                                    modifier = Modifier.height(32.dp)
-                                ) {
-                                    Icon(
-                                        Icons.Default.CreditCard,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(14.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text("Subir extracto de tarjeta", style = MaterialTheme.typography.labelSmall)
+                                if (onNavigateToImport != null) {
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    Button(
+                                        onClick = onNavigateToImport,
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = MaterialTheme.colorScheme.error
+                                        ),
+                                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                                        modifier = Modifier.height(32.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Default.CreditCard,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text("Subir extracto de tarjeta", style = MaterialTheme.typography.labelSmall)
+                                    }
                                 }
-                            }
-                        } else {
-                            // Si se tienen apuntes de tarjeta y/o liquidaciones
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text(
-                                    text = "Liquidado en cuenta (${recon.excludedChargesCount}):",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                            } else {
+                                // Si se tienen apuntes de tarjeta y/o liquidaciones
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(
+                                        text = "Liquidado en cuenta (${recon.excludedChargesCount}):",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Text(
+                                        text = "-${recon.excludedChargesSum.abs().toPlainString()} €",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(
+                                        text = "Gastos reales tarjeta (${recon.actualCardTransactionsCount}):",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Text(
+                                        text = "-${recon.actualCardTransactionsSum.toPlainString()} €",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = ExpenseRed
+                                    )
+                                }
+                                HorizontalDivider(
+                                    modifier = Modifier.padding(vertical = 4.dp),
+                                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
                                 )
-                                Text(
-                                    text = "-${recon.excludedChargesSum.abs().toPlainString()} €",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text(
-                                    text = "Gastos reales tarjeta (${recon.actualCardTransactionsCount}):",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Text(
-                                    text = "-${recon.actualCardTransactionsSum.toPlainString()} €",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    color = ExpenseRed
-                                )
-                            }
-                            HorizontalDivider(
-                                modifier = Modifier.padding(vertical = 4.dp),
-                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
-                            )
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                val diff = recon.pendingSettlementDifference
-                                val diffIsHigher = diff > BigDecimal.ZERO
-                                Text(
-                                    text = if (diffIsHigher) "Desfase pendiente prox. mes:" else "Diferencia de liquidación:",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                                Text(
-                                    text = (if (diffIsHigher) "+" else "") + "${diff.toPlainString()} €",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (diffIsHigher) WarningOrange else MaterialTheme.colorScheme.primary
-                                )
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    val diff = recon.pendingSettlementDifference
+                                    val diffIsHigher = diff > BigDecimal.ZERO
+                                    Text(
+                                        text = if (diffIsHigher) "Desfase pendiente prox. mes:" else "Diferencia de liquidación:",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                    Text(
+                                        text = (if (diffIsHigher) "+" else "") + "${diff.toPlainString()} €",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (diffIsHigher) WarningOrange else MaterialTheme.colorScheme.primary
+                                    )
+                                }
                             }
                         }
                     }
@@ -867,7 +906,7 @@ fun TransactionItemCard(
                 MaterialTheme.colorScheme.surface
         )
     ) {
-        Column(modifier = Modifier.padding(14.dp)) {
+        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -891,7 +930,7 @@ fun TransactionItemCard(
                 }
             }
 
-            Spacer(modifier = Modifier.height(6.dp))
+            Spacer(modifier = Modifier.height(4.dp))
 
             // Fila de Concepto (izquierda) e Importe (derecha)
             Row(
@@ -901,14 +940,14 @@ fun TransactionItemCard(
             ) {
                 Text(
                     text = transaction.concept,
-                    style = MaterialTheme.typography.bodyLarge,
+                    style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.weight(1f),
-                    maxLines = 3,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
 
-                Spacer(modifier = Modifier.width(12.dp))
+                Spacer(modifier = Modifier.width(8.dp))
 
                 // Cuantía
                 val isPositive = transaction.amount >= BigDecimal.ZERO
@@ -917,7 +956,7 @@ fun TransactionItemCard(
                 Column(horizontalAlignment = Alignment.End) {
                     Text(
                         text = (if (isPositive) "+" else "") + "${transaction.amount.toPlainString()} ${transaction.currency}",
-                        style = MaterialTheme.typography.titleMedium,
+                        style = MaterialTheme.typography.bodyLarge,
                         fontWeight = FontWeight.Bold,
                         color = when {
                             isExcluded -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
@@ -938,7 +977,7 @@ fun TransactionItemCard(
             // Fila de Badges (Tarjeta, Cargo mensual, Categoría) usando FlowRow para no comprimir el texto
             val hasBadges = transaction.isCreditCard || transaction.isExcludedFromTotals || categoryName != null
             if (hasBadges) {
-                Spacer(modifier = Modifier.height(6.dp))
+                Spacer(modifier = Modifier.height(4.dp))
                 @OptIn(ExperimentalLayoutApi::class)
                 FlowRow(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -1062,20 +1101,103 @@ fun TransactionItemCard(
 fun TransactionDetailDialog(
     transaction: Transaction,
     categoryName: String? = null,
+    categories: List<Category> = emptyList(),
+    onSelectCategory: (Long?) -> Unit,
     onDismiss: () -> Unit,
     onDelete: () -> Unit,
     onToggleCreditCard: () -> Unit,
     onToggleExclude: () -> Unit
 ) {
+    var categoryMenuExpanded by remember { mutableStateOf(false) }
+
+    // Filtrar las categorías según el signo de la cuantía del apunte:
+    // - Si amount >= 0 (Ingreso): sólo categorías de INCOME (y SAVING si aplica)
+    // - Si amount < 0 (Gasto): sólo categorías de EXPENSE y SAVING
+    val isIncomeTx = transaction.amount >= BigDecimal.ZERO
+    val eligibleCategories = categories.filter { cat ->
+        if (isIncomeTx) {
+            cat.type == com.oryctes.micontabilidad.domain.model.CategoryType.INCOME
+        } else {
+            cat.type == com.oryctes.micontabilidad.domain.model.CategoryType.EXPENSE ||
+            cat.type == com.oryctes.micontabilidad.domain.model.CategoryType.SAVING
+        }
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Detalle del Movimiento", fontWeight = FontWeight.Bold) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 DetailRow(label = "Concepto", value = transaction.concept)
-                if (categoryName != null) {
-                    DetailRow(label = "Categoría", value = categoryName)
+
+                // Selector desplegable de Categoría
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Categoría",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    Box {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f),
+                            modifier = Modifier
+                                .clickable { categoryMenuExpanded = true }
+                                .padding(vertical = 2.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                            ) {
+                                Text(
+                                    text = categoryName ?: if (isIncomeTx) "Otros ingresos" else "Otros gastos",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Icon(
+                                    Icons.Default.ArrowDropDown,
+                                    contentDescription = "Cambiar categoría",
+                                    tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+
+                        DropdownMenu(
+                            expanded = categoryMenuExpanded,
+                            onDismissRequest = { categoryMenuExpanded = false }
+                        ) {
+                            eligibleCategories.forEach { cat ->
+                                DropdownMenuItem(
+                                    text = {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text(
+                                                text = if (cat.type == com.oryctes.micontabilidad.domain.model.CategoryType.SAVING) {
+                                                    "${cat.name} (Ahorro)"
+                                                } else {
+                                                    cat.name
+                                                },
+                                                fontWeight = if (cat.id == transaction.categoryId) FontWeight.Bold else FontWeight.Normal
+                                            )
+                                        }
+                                    },
+                                    onClick = {
+                                        onSelectCategory(cat.id)
+                                        categoryMenuExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
                 }
+
                 DetailRow(label = "Fecha Operación", value = transaction.operationDate.toString())
                 transaction.valueDate?.let { DetailRow(label = "Fecha Valor", value = it.toString()) }
                 DetailRow(label = "Cuantía", value = "${transaction.amount.toPlainString()} ${transaction.currency}")
@@ -1224,8 +1346,8 @@ fun DatePeriodFilterRow(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 2.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+            .padding(horizontal = 16.dp, vertical = 1.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         // Botón activable "Desde"
@@ -1286,9 +1408,9 @@ fun DateFilterChip(
 
     Surface(
         modifier = modifier
-            .height(38.dp)
+            .height(32.dp)
             .clickable(onClick = onClick),
-        shape = RoundedCornerShape(10.dp),
+        shape = RoundedCornerShape(8.dp),
         color = if (isCustomActive) {
             MaterialTheme.colorScheme.primaryContainer
         } else {
@@ -1320,7 +1442,7 @@ fun DateFilterChip(
                 Spacer(modifier = Modifier.width(6.dp))
                 Text(
                     text = "$labelPrefix: $dateText",
-                    style = MaterialTheme.typography.labelMedium,
+                    style = MaterialTheme.typography.labelSmall,
                     fontWeight = if (isCustomActive) FontWeight.Bold else FontWeight.Medium,
                     color = if (isCustomActive) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,

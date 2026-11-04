@@ -36,6 +36,7 @@ import androidx.compose.material.icons.filled.CreditCard
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.FileOpen
+import androidx.compose.material.icons.filled.Label
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -88,6 +89,7 @@ import org.koin.androidx.compose.koinViewModel
 @Composable
 fun ImportScreen(
     onNavigateToTransactions: (com.oryctes.micontabilidad.ui.transactions.TransactionTypeFilter?) -> Unit,
+    onNavigateToCategories: () -> Unit = {},
     viewModel: ImportViewModel = koinViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -123,7 +125,18 @@ fun ImportScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Asistente de Importación", fontWeight = FontWeight.Bold) }
+                title = { Text("Asistente de Importación", fontWeight = FontWeight.Bold) },
+                actions = {
+                    TextButton(onClick = onNavigateToCategories) {
+                        Icon(
+                            Icons.Default.Label,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Categorías", fontWeight = FontWeight.SemiBold)
+                    }
+                }
             )
         },
         snackbarHost = { SnackbarHost(snackbarHostState) }
