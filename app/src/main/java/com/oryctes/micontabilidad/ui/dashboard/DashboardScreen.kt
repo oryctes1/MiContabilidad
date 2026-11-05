@@ -32,11 +32,16 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -60,10 +65,12 @@ fun DashboardScreen(
     onNavigateToImport: () -> Unit,
     onNavigateToAccounts: () -> Unit,
     onNavigateToTransactions: () -> Unit,
+    onNavigateToAccountTransactions: (Long) -> Unit = {},
     onNavigateToSummaries: () -> Unit,
     viewModel: DashboardViewModel = koinViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    var showInvestmentsDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -108,6 +115,16 @@ fun DashboardScreen(
                             style = MaterialTheme.typography.headlineMedium,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "(Inversiones: ${uiState.totalInvestments.toPlainString()} €)",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.85f),
+                            modifier = Modifier
+                                .clickable { showInvestmentsDialog = true }
+                                .padding(vertical = 2.dp)
                         )
 
                         Spacer(modifier = Modifier.height(16.dp))
@@ -203,7 +220,10 @@ fun DashboardScreen(
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         items(uiState.accounts, key = { it.account.id }) { item ->
-                            AccountMiniCard(accountWithBalance = item)
+                            AccountMiniCard(
+                                accountWithBalance = item,
+                                onClick = { onNavigateToAccountTransactions(item.account.id) }
+                            )
                         }
                     }
                 }
@@ -271,15 +291,218 @@ fun DashboardScreen(
                 Spacer(modifier = Modifier.height(16.dp))
             }
         }
+
+        if (showInvestmentsDialog) {
+            InvestmentsDialog(
+                totalInvestments = uiState.totalInvestments,
+                investmentAccounts = uiState.investmentAccounts,
+                onDismiss = { showInvestmentsDialog = false }
+            )
+        }
     }
 }
 
 @Composable
-fun AccountMiniCard(accountWithBalance: AccountWithBalance) {
+fun InvestmentsDialog(
+    totalInvestments: BigDecimal,
+    investmentAccounts: List<AccountWithBalance>,
+    onDismiss: () -> Unit
+) {
+    val dateFormatter = remember { java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Column {
+                Text(
+                    text = "Inversiones",
+                    fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.titleLarge
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "Total invertido: ${totalInvestments.toPlainString()} €",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+        },
+        text = {
+            if (investmentAccounts.isEmpty()) {
+                Text(
+                    text = "No tienes inversiones ni depósitos activos registrados.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    items(investmentAccounts, key = { it.account.id }) { item ->
+                        val acc = item.account
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                            )
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = acc.alias,
+                                            fontWeight = FontWeight.Bold,
+                                            style = MaterialTheme.typography.titleSmall
+                                        )
+                                        Text(
+                                            text = "${acc.entity} • ${acc.type.displayName}",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                    val amount = item.lastBalance ?: acc.initialAmount ?: BigDecimal.ZERO
+                                    Text(
+                                        text = "${amount.toPlainString()} ${acc.currency}",
+                                        fontWeight = FontWeight.Bold,
+                                        style = MaterialTheme.typography.titleMedium,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+
+                                if (acc.type == AccountType.DEPOSIT) {
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    HorizontalDivider()
+                                    Spacer(modifier = Modifier.height(6.dp))
+
+                                    acc.interestRate?.let { rate ->
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Text(
+                                                text = "Interés (TAE):",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                            Text(
+                                                text = "${rate.toPlainString()}%",
+                                                fontWeight = FontWeight.SemiBold,
+                                                style = MaterialTheme.typography.bodySmall
+                                            )
+                                        }
+                                    }
+
+                                    if (acc.startDate != null || acc.termMonths != null) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Text(
+                                                text = "Plazo:",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                            val startStr = acc.startDate?.format(dateFormatter) ?: "-"
+                                            val termStr = acc.termMonths?.let { "$it meses" } ?: ""
+                                            Text(
+                                                text = "$startStr ($termStr)",
+                                                style = MaterialTheme.typography.bodySmall
+                                            )
+                                        }
+                                    }
+
+                                    acc.endDate?.let { end ->
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Text(
+                                                text = "Vencimiento:",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                            Text(
+                                                text = end.format(dateFormatter),
+                                                fontWeight = FontWeight.SemiBold,
+                                                style = MaterialTheme.typography.bodySmall
+                                            )
+                                        }
+                                    }
+
+                                    acc.expectedInterest?.let { expInt ->
+                                        val netInterest = expInt.multiply(BigDecimal("0.81")).setScale(2, java.math.RoundingMode.HALF_UP)
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Text(
+                                                text = "Intereses Brutos:",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                            Text(
+                                                text = "+${expInt.toPlainString()} ${acc.currency}",
+                                                fontWeight = FontWeight.SemiBold,
+                                                style = MaterialTheme.typography.bodySmall
+                                            )
+                                        }
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Text(
+                                                text = "Intereses Netos (-19%):",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                            Text(
+                                                text = "+${netInterest.toPlainString()} ${acc.currency}",
+                                                fontWeight = FontWeight.Bold,
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = IncomeGreen
+                                            )
+                                        }
+                                    }
+                                }
+
+                                if (!acc.notes.isNullOrBlank()) {
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = acc.notes,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cerrar")
+            }
+        }
+    )
+}
+
+@Composable
+fun AccountMiniCard(
+    accountWithBalance: AccountWithBalance,
+    onClick: () -> Unit = {}
+) {
     val account = accountWithBalance.account
     val dateFormatter = remember { java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy") }
 
     Card(
+        onClick = onClick,
         modifier = Modifier.width(200.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
     ) {

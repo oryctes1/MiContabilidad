@@ -177,8 +177,13 @@ class TransactionsViewModel(
             }
         }
 
-        val earliestHistoricalDate = allTxs.minOfOrNull { it.operationDate }
-        val latestHistoricalDate = allTxs.maxOfOrNull { it.operationDate }
+        val accountHistoricalTxs = if (filter.selectedAccountId != null) {
+            allTxs.filter { it.accountId == filter.selectedAccountId }
+        } else {
+            allTxs
+        }
+        val earliestHistoricalDate = accountHistoricalTxs.minOfOrNull { it.operationDate }
+        val latestHistoricalDate = accountHistoricalTxs.maxOfOrNull { it.operationDate }
 
         val datePeriodText = when {
             filter.startDate != null && filter.endDate != null -> " • ${filter.startDate} al ${filter.endDate}"
@@ -279,7 +284,11 @@ class TransactionsViewModel(
     }
 
     fun onAccountFilterChange(accountId: Long?) {
-        _filterState.value = _filterState.value.copy(selectedAccountId = accountId)
+        _filterState.value = _filterState.value.copy(
+            selectedAccountId = accountId,
+            startDate = null,
+            endDate = null
+        )
     }
 
     fun onCategoryFilterChange(categoryId: Long?) {

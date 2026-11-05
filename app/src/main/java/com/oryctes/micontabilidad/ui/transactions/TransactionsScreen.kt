@@ -20,6 +20,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AccountBalance
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowDropDown
@@ -69,8 +70,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.oryctes.micontabilidad.domain.model.Category
@@ -94,12 +102,19 @@ enum class DeleteTarget {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TransactionsScreen(
+    initialAccountId: Long? = null,
     initialFilterType: TransactionTypeFilter? = null,
     onNavigateToImport: (() -> Unit)? = null,
     viewModel: TransactionsViewModel = koinViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
     var showDeleteDialog by remember { mutableStateOf(false) }
+
+    androidx.compose.runtime.LaunchedEffect(initialAccountId) {
+        if (initialAccountId != null) {
+            viewModel.onAccountFilterChange(initialAccountId)
+        }
+    }
 
     androidx.compose.runtime.LaunchedEffect(initialFilterType) {
         if (initialFilterType != null) {
@@ -135,17 +150,77 @@ fun TransactionsScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            // Buscador por texto
+            // Buscador por texto con soporte para tecla Supr (Forward Delete) y TextFieldValue
+            var searchTextValue by remember {
+                mutableStateOf(TextFieldValue(uiState.filterState.searchQuery))
+            }
+
+            // Mantener sincronizado si cambia externamente (ej. al limpiar o resetear filtros)
+            if (searchTextValue.text != uiState.filterState.searchQuery) {
+                searchTextValue = searchTextValue.copy(
+                    text = uiState.filterState.searchQuery,
+                    selection = TextRange(uiState.filterState.searchQuery.length)
+                )
+            }
+
             OutlinedTextField(
-                value = uiState.filterState.searchQuery,
-                onValueChange = { viewModel.onSearchQueryChange(it) },
+                value = searchTextValue,
+                onValueChange = { newValue ->
+                    searchTextValue = newValue
+                    viewModel.onSearchQueryChange(newValue.text)
+                },
                 placeholder = { Text("Buscar por concepto...", style = MaterialTheme.typography.bodySmall) },
                 textStyle = MaterialTheme.typography.bodySmall,
                 leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                trailingIcon = {
+                    if (searchTextValue.text.isNotEmpty()) {
+                        IconButton(
+                            onClick = {
+                                searchTextValue = TextFieldValue("")
+                                viewModel.onSearchQueryChange("")
+                            },
+                            modifier = Modifier.size(24.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Close,
+                                contentDescription = "Limpiar búsqueda",
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+                },
                 singleLine = true,
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 2.dp)
+                    .onPreviewKeyEvent { keyEvent ->
+                        val nativeCode = keyEvent.nativeKeyEvent.keyCode
+                        val isDeleteKey = keyEvent.key == Key.Delete || nativeCode == android.view.KeyEvent.KEYCODE_FORWARD_DEL
+                        if (keyEvent.type == KeyEventType.KeyDown && isDeleteKey) {
+                            val text = searchTextValue.text
+                            val selection = searchTextValue.selection
+                            if (selection.collapsed) {
+                                val cursorIndex = selection.start
+                                if (cursorIndex < text.length) {
+                                    val newText = text.removeRange(cursorIndex, cursorIndex + 1)
+                                    val newFieldVal = TextFieldValue(newText, TextRange(cursorIndex))
+                                    searchTextValue = newFieldVal
+                                    viewModel.onSearchQueryChange(newText)
+                                    true
+                                } else false
+                            } else {
+                                val startIndex = selection.min
+                                val endIndex = selection.max
+                                val newText = text.removeRange(startIndex, endIndex)
+                                val newFieldVal = TextFieldValue(newText, TextRange(startIndex))
+                                searchTextValue = newFieldVal
+                                viewModel.onSearchQueryChange(newText)
+                                true
+                            }
+                        } else {
+                            false
+                        }
+                    }
             )
 
             // Filtros rápidos de Tipo (Todos / Ingresos / Gastos) y Cuentas

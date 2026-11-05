@@ -31,7 +31,7 @@ import kotlinx.coroutines.launch
         ImportProfileEntity::class,
         CategoryEntity::class
     ],
-    version = 6,
+    version = 7,
     exportSchema = true
 )
 @TypeConverters(Converters::class)
@@ -107,13 +107,46 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_6_7 = object : androidx.room.migration.Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                val existingCols = mutableSetOf<String>()
+                val cursor = db.query("PRAGMA table_info(accounts)")
+                while (cursor.moveToNext()) {
+                    val nameIndex = cursor.getColumnIndex("name")
+                    if (nameIndex != -1) {
+                        existingCols.add(cursor.getString(nameIndex))
+                    }
+                }
+                cursor.close()
+
+                if (!existingCols.contains("initialAmount")) {
+                    db.execSQL("ALTER TABLE accounts ADD COLUMN initialAmount TEXT")
+                }
+                if (!existingCols.contains("interestRate")) {
+                    db.execSQL("ALTER TABLE accounts ADD COLUMN interestRate TEXT")
+                }
+                if (!existingCols.contains("startDate")) {
+                    db.execSQL("ALTER TABLE accounts ADD COLUMN startDate TEXT")
+                }
+                if (!existingCols.contains("termMonths")) {
+                    db.execSQL("ALTER TABLE accounts ADD COLUMN termMonths INTEGER")
+                }
+                if (!existingCols.contains("endDate")) {
+                    db.execSQL("ALTER TABLE accounts ADD COLUMN endDate TEXT")
+                }
+                if (!existingCols.contains("expectedInterest")) {
+                    db.execSQL("ALTER TABLE accounts ADD COLUMN expectedInterest TEXT")
+                }
+            }
+        }
+
         fun buildDatabase(context: Context): AppDatabase {
             return Room.databaseBuilder(
                 context.applicationContext,
                 AppDatabase::class.java,
                 DATABASE_NAME
             )
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
             .fallbackToDestructiveMigration()
             .addCallback(object : Callback() {
                 override fun onCreate(db: SupportSQLiteDatabase) {

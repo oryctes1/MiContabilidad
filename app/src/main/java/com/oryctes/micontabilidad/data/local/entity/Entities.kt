@@ -29,7 +29,13 @@ data class AccountEntity(
     val last4: String? = null,
     val notes: String? = null,
     val isArchived: Boolean = false,
-    val createdAt: Long = System.currentTimeMillis()
+    val createdAt: Long = System.currentTimeMillis(),
+    val initialAmount: BigDecimal? = null,
+    val interestRate: BigDecimal? = null,
+    val startDate: LocalDate? = null,
+    val termMonths: Int? = null,
+    val endDate: LocalDate? = null,
+    val expectedInterest: BigDecimal? = null
 ) {
     fun toDomain(): Account = Account(
         id = id,
@@ -40,7 +46,13 @@ data class AccountEntity(
         last4 = last4,
         notes = notes,
         isArchived = isArchived,
-        createdAt = createdAt
+        createdAt = createdAt,
+        initialAmount = initialAmount,
+        interestRate = interestRate,
+        startDate = startDate,
+        termMonths = termMonths,
+        endDate = endDate,
+        expectedInterest = expectedInterest
     )
 
     companion object {
@@ -53,7 +65,13 @@ data class AccountEntity(
             last4 = account.last4,
             notes = account.notes,
             isArchived = account.isArchived,
-            createdAt = account.createdAt
+            createdAt = account.createdAt,
+            initialAmount = account.initialAmount,
+            interestRate = account.interestRate,
+            startDate = account.startDate,
+            termMonths = account.termMonths,
+            endDate = account.endDate,
+            expectedInterest = account.expectedInterest
         )
     }
 }

@@ -39,6 +39,7 @@ fun AppBottomBar(
 ) {
     val navBackStackEntry = navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry.value?.destination?.route
+    val currentBaseRoute = currentRoute?.substringBefore("?")
 
     Surface(
         modifier = modifier.fillMaxWidth(),
@@ -53,7 +54,8 @@ fun AppBottomBar(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Screen.bottomNavItems.forEach { screen ->
-                val isSelected = currentRoute == screen.route
+                val screenBaseRoute = screen.route.substringBefore("?")
+                val isSelected = currentBaseRoute == screenBaseRoute
                 // Asignamos más peso relativo a "Movimientos" (1.3f) y menos a los cortos (0.9f)
                 val itemWeight = when (screen.route) {
                     Screen.Transactions.route -> 1.35f
@@ -77,13 +79,23 @@ fun AppBottomBar(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null
                         ) {
-                            if (currentRoute != screen.route) {
-                                navController.navigate(screen.route) {
-                                    popUpTo(navController.graph.findStartDestination().id) {
-                                        saveState = true
+                            if (!isSelected) {
+                                if (screen.route == Screen.Dashboard.route) {
+                                    // Al volver al Inicio, hacemos pop limpio hasta el inicio del grafo
+                                    navController.navigate(Screen.Dashboard.route) {
+                                        popUpTo(navController.graph.findStartDestination().id) {
+                                            inclusive = false
+                                        }
+                                        launchSingleTop = true
                                     }
-                                    launchSingleTop = true
-                                    restoreState = true
+                                } else {
+                                    navController.navigate(screen.route) {
+                                        popUpTo(navController.graph.findStartDestination().id) {
+                                            saveState = true
+                                        }
+                                        launchSingleTop = true
+                                        restoreState = true
+                                    }
                                 }
                             }
                         },

@@ -2,6 +2,7 @@ package com.oryctes.micontabilidad.ui.navigation
 
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -25,14 +26,65 @@ fun NavGraph(
     ) {
         composable(Screen.Dashboard.route) {
             DashboardScreen(
-                onNavigateToImport = { navController.navigate(Screen.Import.route) },
-                onNavigateToAccounts = { navController.navigate(Screen.Accounts.route) },
-                onNavigateToTransactions = { navController.navigate(Screen.Transactions.route) },
-                onNavigateToSummaries = { navController.navigate(Screen.Summaries.route) }
+                onNavigateToImport = {
+                    navController.navigate(Screen.Import.route) {
+                        popUpTo(navController.graph.findStartDestination().id) {
+                            saveState = true
+                        }
+                        launchSingleTop = true
+                        restoreState = true
+                    }
+                },
+                onNavigateToAccounts = {
+                    navController.navigate(Screen.Accounts.route) {
+                        popUpTo(navController.graph.findStartDestination().id) {
+                            saveState = true
+                        }
+                        launchSingleTop = true
+                        restoreState = true
+                    }
+                },
+                onNavigateToTransactions = {
+                    navController.navigate(Screen.Transactions.route) {
+                        popUpTo(navController.graph.findStartDestination().id) {
+                            saveState = true
+                        }
+                        launchSingleTop = true
+                        restoreState = true
+                    }
+                },
+                onNavigateToAccountTransactions = { accountId ->
+                    navController.navigate("${Screen.Transactions.route}?accountId=$accountId") {
+                        popUpTo(navController.graph.findStartDestination().id) {
+                            saveState = true
+                        }
+                        launchSingleTop = true
+                        restoreState = false
+                    }
+                },
+                onNavigateToSummaries = {
+                    navController.navigate(Screen.Summaries.route) {
+                        popUpTo(navController.graph.findStartDestination().id) {
+                            saveState = true
+                        }
+                        launchSingleTop = true
+                        restoreState = true
+                    }
+                }
             )
         }
         composable(Screen.Accounts.route) {
-            AccountsScreen()
+            AccountsScreen(
+                onNavigateToAccountTransactions = { accountId ->
+                    navController.navigate("${Screen.Transactions.route}?accountId=$accountId") {
+                        popUpTo(navController.graph.findStartDestination().id) {
+                            saveState = true
+                        }
+                        launchSingleTop = true
+                        restoreState = false
+                    }
+                }
+            )
         }
         composable(Screen.Import.route) {
             ImportScreen(
@@ -52,9 +104,14 @@ fun NavGraph(
             )
         }
         composable(
-            route = "${Screen.Transactions.route}?filter={filter}",
+            route = "${Screen.Transactions.route}?filter={filter}&accountId={accountId}",
             arguments = listOf(
                 androidx.navigation.navArgument("filter") {
+                    type = androidx.navigation.NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                },
+                androidx.navigation.navArgument("accountId") {
                     type = androidx.navigation.NavType.StringType
                     nullable = true
                     defaultValue = null
@@ -62,6 +119,7 @@ fun NavGraph(
             )
         ) { backStackEntry ->
             val filterParam = backStackEntry.arguments?.getString("filter")
+            val accountIdParam = backStackEntry.arguments?.getString("accountId")?.toLongOrNull()
             val initialFilter = filterParam?.let {
                 try {
                     com.oryctes.micontabilidad.ui.transactions.TransactionTypeFilter.valueOf(it)
@@ -70,6 +128,7 @@ fun NavGraph(
                 }
             }
             TransactionsScreen(
+                initialAccountId = accountIdParam,
                 initialFilterType = initialFilter,
                 onNavigateToImport = { navController.navigate(Screen.Import.route) }
             )

@@ -25,7 +25,9 @@ data class DashboardUiState(
     val currentMonthSummary: MonthlySummary? = null,
     val recentTransactions: List<Transaction> = emptyList(),
     val monthlyHistory: List<MonthlySummary> = emptyList(),
-    val totalBalance: BigDecimal = BigDecimal.ZERO
+    val totalBalance: BigDecimal = BigDecimal.ZERO,
+    val totalInvestments: BigDecimal = BigDecimal.ZERO,
+    val investmentAccounts: List<AccountWithBalance> = emptyList()
 )
 
 class DashboardViewModel(
@@ -44,9 +46,20 @@ class DashboardViewModel(
         val currentMonth = summaries.find { it.yearMonth == currentYearMonth }
         val recent = allTxs.take(5)
 
-        // Calcular cuentas con último saldo conocido y saldo total global
+        // Separar cuentas normales de depósitos / inversiones
         val accountsWithBalance = accounts.map { it.withBalance(allTxs) }
-        val balanceSum = accountsWithBalance.mapNotNull { it.lastBalance }
+        
+        // El importe de depósitos NO computa para calcular el saldo total estimado
+        val nonDepositAccounts = accountsWithBalance.filter { it.account.type != com.oryctes.micontabilidad.domain.model.AccountType.DEPOSIT }
+        val balanceSum = nonDepositAccounts.mapNotNull { it.lastBalance }
+            .fold(BigDecimal.ZERO) { acc, b -> acc.add(b) }
+
+        // Inversiones: depósitos y cuentas de inversión
+        val investmentAccounts = accountsWithBalance.filter {
+            it.account.type == com.oryctes.micontabilidad.domain.model.AccountType.DEPOSIT ||
+            it.account.type == com.oryctes.micontabilidad.domain.model.AccountType.INVESTMENT
+        }
+        val totalInvestments = investmentAccounts.mapNotNull { it.lastBalance }
             .fold(BigDecimal.ZERO) { acc, b -> acc.add(b) }
 
         DashboardUiState(
@@ -55,7 +68,9 @@ class DashboardViewModel(
             currentMonthSummary = currentMonth,
             recentTransactions = recent,
             monthlyHistory = summaries,
-            totalBalance = balanceSum
+            totalBalance = balanceSum,
+            totalInvestments = totalInvestments,
+            investmentAccounts = investmentAccounts
         )
     }.stateIn(
         scope = viewModelScope,

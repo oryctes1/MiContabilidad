@@ -1,8 +1,12 @@
 package com.oryctes.micontabilidad.domain.model
 
+import java.math.BigDecimal
+import java.time.LocalDate
+
 enum class AccountType(val displayName: String) {
     CHECKING("Cuenta Corriente"),
     SAVINGS("Cuenta de Ahorro"),
+    DEPOSIT("Depósito"),
     CREDIT_CARD("Tarjeta de Crédito"),
     DEBIT_CARD("Tarjeta de Débito"),
     INVESTMENT("Inversión"),
@@ -18,7 +22,13 @@ data class Account(
     val last4: String? = null,
     val notes: String? = null,
     val isArchived: Boolean = false,
-    val createdAt: Long = System.currentTimeMillis()
+    val createdAt: Long = System.currentTimeMillis(),
+    val initialAmount: BigDecimal? = null,
+    val interestRate: BigDecimal? = null,
+    val startDate: LocalDate? = null,
+    val termMonths: Int? = null,
+    val endDate: LocalDate? = null,
+    val expectedInterest: BigDecimal? = null
 )
 
 data class AccountWithBalance(
@@ -28,6 +38,13 @@ data class AccountWithBalance(
 )
 
 fun Account.withBalance(transactions: List<Transaction>): AccountWithBalance {
+    if (this.type == AccountType.DEPOSIT) {
+        return AccountWithBalance(
+            account = this,
+            lastBalance = this.initialAmount,
+            lastBalanceDate = this.startDate ?: LocalDate.now()
+        )
+    }
     val accountTxs = transactions.filter {
         it.accountId == this.id && it.reviewStatus != ReviewStatus.DISCARDED
     }
