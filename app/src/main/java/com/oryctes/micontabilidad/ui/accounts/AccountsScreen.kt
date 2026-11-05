@@ -511,13 +511,7 @@ fun AccountCard(
                                 fontWeight = FontWeight.SemiBold,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
-                            if (account.type == AccountType.DEPOSIT && account.endDate != null) {
-                                Text(
-                                    text = "Vence el: ${account.endDate.format(dateFormatter)}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            } else if (accountWithBalance.lastBalanceDate != null) {
+                            if (accountWithBalance.lastBalanceDate != null) {
                                 Text(
                                     text = "A fecha: ${accountWithBalance.lastBalanceDate.format(dateFormatter)}",
                                     style = MaterialTheme.typography.bodySmall,
@@ -532,46 +526,19 @@ fun AccountCard(
                             }
                         }
 
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            if (accountWithBalance.lastBalance != null) {
-                                Text(
-                                    text = "${accountWithBalance.lastBalance.toPlainString()} ${account.currency}",
-                                    style = MaterialTheme.typography.titleLarge,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                            } else {
-                                Text(
-                                    text = "Sin saldo",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                                )
-                            }
-
-                            if (account.type == AccountType.DEPOSIT && account.endDate != null) {
-                                val today = java.time.LocalDate.now()
-                                val daysRemaining = java.time.temporal.ChronoUnit.DAYS.between(today, account.endDate)
-                                val (line1, line2) = when {
-                                    daysRemaining > 1 -> Pair("Quedan", "$daysRemaining días")
-                                    daysRemaining == 1L -> Pair("Queda", "1 día")
-                                    daysRemaining == 0L -> Pair("Vence", "hoy")
-                                    else -> Pair("Venció hace", "${Math.abs(daysRemaining)} días")
-                                }
-                                Spacer(modifier = Modifier.width(12.dp))
-                                Column(horizontalAlignment = Alignment.End) {
-                                    Text(
-                                        text = line1,
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                    Text(
-                                        text = line2,
-                                        style = MaterialTheme.typography.labelMedium,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (daysRemaining <= 15) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
-                                    )
-                                }
-                            }
+                        if (accountWithBalance.lastBalance != null) {
+                            Text(
+                                text = "${accountWithBalance.lastBalance.toPlainString()} ${account.currency}",
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        } else {
+                            Text(
+                                text = "Sin saldo",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                            )
                         }
                     }
 
