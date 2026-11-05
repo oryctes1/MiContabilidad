@@ -223,7 +223,13 @@ fun DashboardScreen(
                         items(uiState.accounts, key = { it.account.id }) { item ->
                             AccountMiniCard(
                                 accountWithBalance = item,
-                                onClick = { onNavigateToAccountTransactions(item.account.id) }
+                                onClick = {
+                                    if (item.account.type == AccountType.DEPOSIT) {
+                                        onNavigateToAccounts()
+                                    } else {
+                                        onNavigateToAccountTransactions(item.account.id)
+                                    }
+                                }
                             )
                         }
                     }

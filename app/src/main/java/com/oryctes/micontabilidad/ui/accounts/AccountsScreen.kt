@@ -122,7 +122,14 @@ fun AccountsScreen(
                 items(uiState.accounts, key = { it.account.id }) { item ->
                     AccountCard(
                         accountWithBalance = item,
-                        onClick = { onNavigateToAccountTransactions(item.account.id) },
+                        onClick = {
+                            if (item.account.type == AccountType.DEPOSIT) {
+                                accountToEdit = item.account
+                                showDialog = true
+                            } else {
+                                onNavigateToAccountTransactions(item.account.id)
+                            }
+                        },
                         onEdit = {
                             accountToEdit = item.account
                             showDialog = true
@@ -259,7 +266,7 @@ fun ExpiredDepositsDialog(
                     items(expiredDeposits, key = { it.account.id }) { item ->
                         val acc = item.account
                         Card(
-                            onClick = { onNavigateToAccountTransactions(acc.id) },
+                            onClick = { onEdit(acc) },
                             modifier = Modifier.fillMaxWidth(),
                             colors = CardDefaults.cardColors(
                                 containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
