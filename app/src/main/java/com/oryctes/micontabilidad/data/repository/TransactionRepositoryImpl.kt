@@ -12,6 +12,7 @@ import com.oryctes.micontabilidad.domain.model.MonthlySummary
 import com.oryctes.micontabilidad.domain.model.Transaction
 import com.oryctes.micontabilidad.domain.repository.TransactionRepository
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import java.math.BigDecimal
@@ -159,43 +160,69 @@ class TransactionRepositoryImpl(
     override fun getMonthlySummaries(accountId: Long?, year: Int): Flow<List<MonthlySummary>> {
         val startDate = LocalDate.of(year, 1, 1)
         val endDate = LocalDate.of(year, 12, 31)
+        val today = LocalDate.now()
 
-        return transactionDao.getFilteredTransactionsFlow(accountId, startDate, endDate, null)
-            .map { entities ->
-                val grouped = entities.groupBy { YearMonth.from(it.operationDate) }
+        return combine(
+            transactionDao.getFilteredTransactionsFlow(accountId, startDate, endDate, null),
+            transactionDao.getAllTransactionsFlow()
+        ) { yearEntities, allEntities ->
+            val groupedByMonth = yearEntities.groupBy { YearMonth.from(it.operationDate) }
 
-                (1..12).map { month ->
-                    val ym = YearMonth.of(year, month)
-                    val txs = grouped[ym] ?: emptyList()
+            // Todas las transacciones con saldo ordenadas cronológicamente para reconstruir el saldo
+            val eligibleAllTxsWithBalance = allEntities
+                .filter { it.balance != null && (accountId == null || it.accountId == accountId) }
+                .sortedWith(compareBy<TransactionEntity> { it.operationDate }.thenBy { it.id })
 
-                    var income = BigDecimal.ZERO
-                    var expense = BigDecimal.ZERO
+            (1..12).map { month ->
+                val ym = YearMonth.of(year, month)
+                val txsInMonth = groupedByMonth[ym] ?: emptyList()
 
-                    for (tx in txs) {
-                        // Evitar doble cómputo en resúmenes mensuales
-                        if (tx.isExcludedFromTotals) continue
+                var income = BigDecimal.ZERO
+                var expense = BigDecimal.ZERO
 
-                        if (tx.amount > BigDecimal.ZERO) {
-                            income = income.add(tx.amount)
-                        } else {
-                            expense = expense.add(tx.amount.abs())
-                        }
+                for (tx in txsInMonth) {
+                    // Evitar doble cómputo en resúmenes mensuales
+                    if (tx.isExcludedFromTotals) continue
+
+                    if (tx.amount > BigDecimal.ZERO) {
+                        income = income.add(tx.amount)
+                    } else {
+                        expense = expense.add(tx.amount.abs())
                     }
-
-                    val net = income.subtract(expense)
-                    // Último saldo conocido del mes
-                    val lastBalance = txs.maxByOrNull { it.operationDate }?.balance
-
-                    MonthlySummary(
-                        yearMonth = ym,
-                        totalIncome = income,
-                        totalExpense = expense,
-                        netSavings = net,
-                        endBalance = lastBalance,
-                        transactionCount = txs.size
-                    )
                 }
+
+                val net = income.subtract(expense)
+                val monthEnd = ym.atEndOfMonth()
+
+                // Si el mes está en el futuro respecto a hoy, su saldo final es null
+                val endBalance = if ((ym.year == today.year && ym.monthValue > today.monthValue) || ym.year > today.year) {
+                    null
+                } else {
+                    val txsUpToMonth = eligibleAllTxsWithBalance.filter { !it.operationDate.isAfter(monthEnd) }
+                    if (txsUpToMonth.isEmpty()) {
+                        null
+                    } else if (accountId != null) {
+                        // Saldo del último apunte de esta cuenta hasta la fecha
+                        txsUpToMonth.lastOrNull()?.balance
+                    } else {
+                        // Todas las cuentas: tomar el último saldo conocido de cada cuenta hasta la fecha y sumarlos
+                        val latestByAccount = txsUpToMonth.groupBy { it.accountId }
+                            .mapValues { entry -> entry.value.last().balance }
+                        val sum = latestByAccount.values.filterNotNull().fold(BigDecimal.ZERO) { acc, b -> acc.add(b) }
+                        if (latestByAccount.isNotEmpty()) sum else null
+                    }
+                }
+
+                MonthlySummary(
+                    yearMonth = ym,
+                    totalIncome = income,
+                    totalExpense = expense,
+                    netSavings = net,
+                    endBalance = endBalance,
+                    transactionCount = txsInMonth.size
+                )
             }
+        }
     }
 
     override fun getCategorySummaries(accountId: Long?, yearMonth: YearMonth): Flow<List<CategorySummary>> {

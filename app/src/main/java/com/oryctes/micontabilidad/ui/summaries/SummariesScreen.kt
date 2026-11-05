@@ -51,6 +51,10 @@ fun SummariesScreen(
         "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
         "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"
     )
+    val monthNamesShort = listOf(
+        "Ene", "Feb", "Mar", "Abr", "May", "Jun",
+        "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"
+    )
 
     Scaffold(
         topBar = {
@@ -187,7 +191,7 @@ fun SummariesScreen(
                             .map { s ->
                                 val mIdx = s.yearMonth.monthValue - 1
                                 com.oryctes.micontabilidad.ui.components.BalanceDataPoint(
-                                    label = monthNames.getOrElse(mIdx) { "${s.yearMonth.monthValue}" },
+                                    label = monthNamesShort.getOrElse(mIdx) { "${s.yearMonth.monthValue}" },
                                     fullDate = "${monthNames.getOrElse(mIdx) { "" }} ${s.yearMonth.year}",
                                     balance = s.endBalance ?: java.math.BigDecimal.ZERO
                                 )

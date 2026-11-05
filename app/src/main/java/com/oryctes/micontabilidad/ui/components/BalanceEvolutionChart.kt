@@ -53,6 +53,22 @@ import java.text.DecimalFormat
 import java.text.DecimalFormatSymbols
 import java.util.Locale
 
+private fun formatCompactYAxis(value: Float): String {
+    val absVal = kotlin.math.abs(value)
+    val sign = if (value < 0) "-" else ""
+    return when {
+        absVal >= 1_000_000f -> {
+            val v = absVal / 1_000_000f
+            if (v % 1f == 0f || v >= 10f) "${sign}${v.toInt()}M" else "${sign}%.1fM".format(Locale.US, v).replace('.', ',')
+        }
+        absVal >= 1_000f -> {
+            val v = absVal / 1_000f
+            if (v % 1f == 0f || v >= 10f) "${sign}${v.toInt()}k" else "${sign}%.1fk".format(Locale.US, v).replace('.', ',')
+        }
+        else -> "${sign}${value.toInt()}"
+    }
+}
+
 data class BalanceDataPoint(
     val label: String,        // Ej: "Ene", "15/10"
     val fullDate: String,     // Ej: "Enero 2026", "15/10/2026"
@@ -194,12 +210,14 @@ fun BalanceEvolutionChart(
                     .pointerInput(dataPoints) {
                         detectTapGestures(
                             onTap = { offset ->
-                                val yAxisWidth = 55.dp.toPx()
-                                val plotWidth = size.width - yAxisWidth - 16.dp.toPx()
-                                if (dataPoints.size > 1 && offset.x >= yAxisWidth) {
+                                val yAxisWidth = 36.dp.toPx()
+                                val plotLeft = yAxisWidth + 12.dp.toPx()
+                                val plotRight = size.width - 16.dp.toPx()
+                                val plotWidth = (plotRight - plotLeft).coerceAtLeast(1f)
+                                if (dataPoints.size > 1 && offset.x >= plotLeft - 12.dp.toPx()) {
                                     val stepX = plotWidth / (dataPoints.size - 1)
-                                    val relativeX = offset.x - yAxisWidth
-                                    val closestIndex = (relativeX / stepX)
+                                    val relativeX = (offset.x - plotLeft).coerceIn(0f, plotWidth)
+                                    val closestIndex = (relativeX / stepX + 0.5f)
                                         .toInt()
                                         .coerceIn(0, dataPoints.size - 1)
                                     selectedIndex = if (selectedIndex == closestIndex) null else closestIndex
@@ -212,12 +230,14 @@ fun BalanceEvolutionChart(
                             onDragEnd = {},
                             onDragCancel = {},
                             onHorizontalDrag = { change, _ ->
-                                val yAxisWidth = 55.dp.toPx()
-                                val plotWidth = size.width - yAxisWidth - 16.dp.toPx()
-                                if (dataPoints.size > 1 && change.position.x >= yAxisWidth) {
+                                val yAxisWidth = 36.dp.toPx()
+                                val plotLeft = yAxisWidth + 12.dp.toPx()
+                                val plotRight = size.width - 16.dp.toPx()
+                                val plotWidth = (plotRight - plotLeft).coerceAtLeast(1f)
+                                if (dataPoints.size > 1 && change.position.x >= plotLeft - 12.dp.toPx()) {
                                     val stepX = plotWidth / (dataPoints.size - 1)
-                                    val relativeX = change.position.x - yAxisWidth
-                                    val closestIndex = (relativeX / stepX)
+                                    val relativeX = (change.position.x - plotLeft).coerceIn(0f, plotWidth)
+                                    val closestIndex = (relativeX / stepX + 0.5f)
                                         .toInt()
                                         .coerceIn(0, dataPoints.size - 1)
                                     selectedIndex = closestIndex
@@ -229,13 +249,14 @@ fun BalanceEvolutionChart(
                 val totalWidth = size.width
                 val totalHeight = size.height
 
-                val yAxisWidth = 55.dp.toPx()
+                val yAxisWidth = 36.dp.toPx()
+                val plotLeft = yAxisWidth + 12.dp.toPx()
                 val xAxisHeight = 24.dp.toPx()
-                val plotTop = 12.dp.toPx()
+                val plotTop = 14.dp.toPx()
                 val plotBottom = totalHeight - xAxisHeight
                 val plotHeight = plotBottom - plotTop
-                val plotRight = totalWidth - 12.dp.toPx()
-                val plotWidth = plotRight - yAxisWidth
+                val plotRight = totalWidth - 16.dp.toPx()
+                val plotWidth = (plotRight - plotLeft).coerceAtLeast(1f)
 
                 val axisTextPaint = android.graphics.Paint().apply {
                     color = textColor
@@ -251,7 +272,7 @@ fun BalanceEvolutionChart(
                     isAntiAlias = true
                 }
 
-                // 1. Dibujar marcas y líneas de rejilla del Eje Y (Saldo)
+                // 1. Dibujar marcas y líneas de rejilla del Eje Y (Saldo en formato 1k, 10k, 20k...)
                 val yTicks = 4
                 for (i in 0 until yTicks) {
                     val fraction = i.toFloat() / (yTicks - 1)
@@ -268,15 +289,15 @@ fun BalanceEvolutionChart(
 
                     // Texto del valor en el Eje Y
                     drawContext.canvas.nativeCanvas.drawText(
-                        compactCurrencyFormatter.format(valueAtTick),
-                        yAxisWidth - 6.dp.toPx(),
+                        formatCompactYAxis(valueAtTick),
+                        yAxisWidth - 4.dp.toPx(),
                         y + 4.dp.toPx(),
                         axisTextPaint
                     )
                 }
 
                 if (floatValues.size == 1) {
-                    val centerPoint = Offset(yAxisWidth + plotWidth / 2f, plotBottom - plotHeight / 2f)
+                    val centerPoint = Offset(plotLeft + plotWidth / 2f, plotBottom - plotHeight / 2f)
                     drawCircle(color = lineColor, radius = 6.dp.toPx(), center = centerPoint)
                     return@Canvas
                 }
@@ -286,7 +307,7 @@ fun BalanceEvolutionChart(
                 val points = floatValues.mapIndexed { index, value ->
                     val normalizedY = 1f - ((value - minVal) / range)
                     val currentY = plotTop + (plotHeight * normalizedY * animationProgress.value + plotHeight * (1f - animationProgress.value))
-                    Offset(yAxisWidth + index * stepX, currentY)
+                    Offset(plotLeft + index * stepX, currentY)
                 }
 
                 // 3. Dibujar curvas y relleno
@@ -323,11 +344,11 @@ fun BalanceEvolutionChart(
                     style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round)
                 )
 
-                // 4. Dibujar etiquetas del Eje X (Fechas / Meses)
-                val labelSkip = if (dataPoints.size > 8) (dataPoints.size / 6).coerceAtLeast(1) else 1
+                // 4. Dibujar etiquetas del Eje X limitadas a 3 caracteres (Ene, Feb, Mar, ...)
+                val labelSkip = if (dataPoints.size > 12) 2 else 1
                 dataPoints.forEachIndexed { index, point ->
                     if (index % labelSkip == 0 || index == dataPoints.size - 1) {
-                        val x = yAxisWidth + index * stepX
+                        val x = plotLeft + index * stepX
                         val isHighlighted = selectedIndex == index
                         val paint = if (isHighlighted) {
                             android.graphics.Paint(xAxisTextPaint).apply {
@@ -336,8 +357,14 @@ fun BalanceEvolutionChart(
                             }
                         } else xAxisTextPaint
 
+                        val displayLabel = if (point.label.length > 3 && !point.label.contains('/')) {
+                            point.label.take(3)
+                        } else {
+                            point.label
+                        }
+
                         drawContext.canvas.nativeCanvas.drawText(
-                            point.label,
+                            displayLabel,
                             x,
                             totalHeight - 4.dp.toPx(),
                             paint
