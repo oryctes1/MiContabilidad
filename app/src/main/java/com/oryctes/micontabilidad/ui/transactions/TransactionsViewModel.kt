@@ -3,6 +3,7 @@ package com.oryctes.micontabilidad.ui.transactions
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.oryctes.micontabilidad.domain.model.Account
+import com.oryctes.micontabilidad.domain.model.sortedForDisplay
 import com.oryctes.micontabilidad.domain.model.Category
 import com.oryctes.micontabilidad.domain.model.ReviewStatus
 import com.oryctes.micontabilidad.domain.model.Transaction
@@ -105,6 +106,7 @@ class TransactionsViewModel(
         _filterState,
         _selectedTransaction
     ) { (txs, allTxs), accounts, categories, filter, selected ->
+        val sortedAccounts = accounts.sortedForDisplay(allTxs)
         val filteredByCategory = when (filter.selectedCategoryId) {
             null -> txs
             -1L -> txs.filter { it.categoryId == null }
@@ -262,7 +264,7 @@ class TransactionsViewModel(
 
         TransactionsUiState(
             transactions = finalTxs,
-            accounts = accounts,
+            accounts = sortedAccounts,
             categories = categories,
             filterState = filter,
             selectedTransaction = selected,

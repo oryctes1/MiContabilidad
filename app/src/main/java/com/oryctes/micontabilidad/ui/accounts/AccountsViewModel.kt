@@ -6,6 +6,7 @@ import com.oryctes.micontabilidad.domain.model.Account
 import com.oryctes.micontabilidad.domain.model.AccountType
 import com.oryctes.micontabilidad.domain.model.AccountWithBalance
 import com.oryctes.micontabilidad.domain.model.withBalance
+import com.oryctes.micontabilidad.domain.model.sortedForDisplay
 import com.oryctes.micontabilidad.domain.repository.AccountRepository
 import com.oryctes.micontabilidad.domain.repository.TransactionRepository
 import kotlinx.coroutines.flow.SharingStarted
@@ -57,11 +58,8 @@ class AccountsViewModel(
               ((it.account.endDate != null && !it.account.endDate.isAfter(today)) || it.account.isArchived))
         }
 
-        // Ordenar: primero las cuentas y tarjetas habituales (no depósitos), y los depósitos lo último
-        val sortedActive = activeAccounts.sortedWith(
-            compareBy<AccountWithBalance> { if (it.account.type == AccountType.DEPOSIT) 1 else 0 }
-                .thenBy { it.account.alias.lowercase() }
-        )
+        // Ordenar: cuentas con movimientos recientes primero, y depósitos al final por vencimiento más próximo
+        val sortedActive = activeAccounts.sortedForDisplay()
 
         AccountsUiState(
             accounts = sortedActive,

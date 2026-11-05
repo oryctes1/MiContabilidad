@@ -14,6 +14,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Savings
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.AccountBalance
 import androidx.compose.material.icons.filled.Add
@@ -512,19 +513,25 @@ fun AccountMiniCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                val icon = if (account.type == AccountType.CREDIT_CARD || account.type == AccountType.DEBIT_CARD) {
-                    Icons.Default.CreditCard
-                } else {
-                    Icons.Default.AccountBalance
+                val icon = when (account.type) {
+                    AccountType.CREDIT_CARD, AccountType.DEBIT_CARD -> Icons.Default.CreditCard
+                    AccountType.DEPOSIT -> Icons.Default.Savings
+                    else -> Icons.Default.AccountBalance
                 }
                 Icon(
                     imageVector = icon,
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.primary
                 )
-                if (accountWithBalance.lastBalanceDate != null) {
+                val topDateStr = if (account.type == AccountType.DEPOSIT && account.endDate != null) {
+                    "Vto: " + account.endDate.format(dateFormatter)
+                } else if (accountWithBalance.lastBalanceDate != null) {
+                    accountWithBalance.lastBalanceDate.format(dateFormatter)
+                } else null
+
+                if (topDateStr != null) {
                     Text(
-                        text = accountWithBalance.lastBalanceDate.format(dateFormatter),
+                        text = topDateStr,
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -553,9 +560,15 @@ fun AccountMiniCard(
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary
                 )
-                val dateStr = accountWithBalance.lastBalanceDate?.format(dateFormatter)
+                val dateSubtitle = if (account.type == AccountType.DEPOSIT && account.endDate != null) {
+                    "Vence el " + account.endDate.format(dateFormatter)
+                } else if (accountWithBalance.lastBalanceDate != null) {
+                    "Saldo a " + accountWithBalance.lastBalanceDate.format(dateFormatter)
+                } else {
+                    "Último saldo"
+                }
                 Text(
-                    text = if (dateStr != null) "Saldo a $dateStr" else "Último saldo",
+                    text = dateSubtitle,
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

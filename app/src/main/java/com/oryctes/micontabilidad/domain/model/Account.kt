@@ -88,3 +88,90 @@ fun Account.withBalance(transactions: List<Transaction>): AccountWithBalance {
         )
     }
 }
+
+
+/**
+ * Ordena las cuentas para su presentacion en tarjetas deslizables y selectores:
+ * 1. Primero las cuentas y tarjetas habituales (no depositos), ordenadas con los movimientos
+ *    mas recientes primero (fecha de ultimo movimiento descendente).
+ *    Las cuentas sin movimientos van a continuacion.
+ * 2. Al final se colocan los depositos (AccountType.DEPOSIT), ordenados por su fecha
+ *    de vencimiento mas cercana primero (endDate ascendente).
+ */
+fun List<AccountWithBalance>.sortedForDisplay(): List<AccountWithBalance> {
+    val (deposits, regular) = this.partition { it.account.type == AccountType.DEPOSIT }
+
+    val regularSorted = regular.sortedWith { a, b ->
+        val dateA = a.lastBalanceDate
+        val dateB = b.lastBalanceDate
+        when {
+            dateA != null && dateB != null -> {
+                val cmp = dateB.compareTo(dateA) // Descendente: mas reciente primero
+                if (cmp != 0) cmp else a.account.alias.compareTo(b.account.alias, ignoreCase = true)
+            }
+            dateA != null && dateB == null -> -1
+            dateA == null && dateB != null -> 1
+            else -> a.account.alias.compareTo(b.account.alias, ignoreCase = true)
+        }
+    }
+
+    val depositsSorted = deposits.sortedWith { a, b ->
+        val endA = a.account.endDate
+        val endB = b.account.endDate
+        when {
+            endA != null && endB != null -> {
+                val cmp = endA.compareTo(endB) // Ascendente: vencimiento mas cercano primero
+                if (cmp != 0) cmp else a.account.alias.compareTo(b.account.alias, ignoreCase = true)
+            }
+            endA != null && endB == null -> -1
+            endA == null && endB != null -> 1
+            else -> a.account.alias.compareTo(b.account.alias, ignoreCase = true)
+        }
+    }
+
+    return regularSorted + depositsSorted
+}
+
+/**
+ * Ordena una lista de cuentas planas (Account) apoyandose en el historico de transacciones:
+ * 1. Cuentas no deposito: fecha de movimiento mas reciente primero.
+ * 2. Depositos al final: vencimiento mas cercano primero.
+ */
+fun List<Account>.sortedForDisplay(transactions: List<Transaction>): List<Account> {
+    val (deposits, regular) = this.partition { it.type == AccountType.DEPOSIT }
+
+    val latestDateByAccountId = transactions
+        .filter { it.reviewStatus != ReviewStatus.DISCARDED }
+        .groupBy { it.accountId }
+        .mapValues { entry -> entry.value.maxOfOrNull { it.operationDate } }
+
+    val regularSorted = regular.sortedWith { a, b ->
+        val dateA = latestDateByAccountId[a.id]
+        val dateB = latestDateByAccountId[b.id]
+        when {
+            dateA != null && dateB != null -> {
+                val cmp = dateB.compareTo(dateA) // Descendente: mas reciente primero
+                if (cmp != 0) cmp else a.alias.compareTo(b.alias, ignoreCase = true)
+            }
+            dateA != null && dateB == null -> -1
+            dateA == null && dateB != null -> 1
+            else -> a.alias.compareTo(b.alias, ignoreCase = true)
+        }
+    }
+
+    val depositsSorted = deposits.sortedWith { a, b ->
+        val endA = a.endDate
+        val endB = b.endDate
+        when {
+            endA != null && endB != null -> {
+                val cmp = endA.compareTo(endB) // Ascendente: vencimiento mas cercano primero
+                if (cmp != 0) cmp else a.alias.compareTo(b.alias, ignoreCase = true)
+            }
+            endA != null && endB == null -> -1
+            endA == null && endB != null -> 1
+            else -> a.alias.compareTo(b.alias, ignoreCase = true)
+        }
+    }
+
+    return regularSorted + depositsSorted
+}

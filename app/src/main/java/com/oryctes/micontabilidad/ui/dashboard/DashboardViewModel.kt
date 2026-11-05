@@ -7,6 +7,7 @@ import com.oryctes.micontabilidad.domain.model.AccountWithBalance
 import com.oryctes.micontabilidad.domain.model.MonthlySummary
 import com.oryctes.micontabilidad.domain.model.Transaction
 import com.oryctes.micontabilidad.domain.model.withBalance
+import com.oryctes.micontabilidad.domain.model.sortedForDisplay
 import com.oryctes.micontabilidad.domain.repository.AccountRepository
 import com.oryctes.micontabilidad.domain.repository.TransactionRepository
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -47,7 +48,7 @@ class DashboardViewModel(
         val recent = allTxs.take(5)
 
         // Separar cuentas normales de depósitos / inversiones
-        val accountsWithBalance = accounts.map { it.withBalance(allTxs) }
+        val accountsWithBalance = accounts.map { it.withBalance(allTxs) }.sortedForDisplay()
         
         // El importe de depósitos NO computa para calcular el saldo total estimado
         val nonDepositAccounts = accountsWithBalance.filter { it.account.type != com.oryctes.micontabilidad.domain.model.AccountType.DEPOSIT }

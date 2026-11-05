@@ -3,6 +3,7 @@ package com.oryctes.micontabilidad.ui.summaries
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.oryctes.micontabilidad.domain.model.Account
+import com.oryctes.micontabilidad.domain.model.sortedForDisplay
 import com.oryctes.micontabilidad.domain.model.CategorySummary
 import com.oryctes.micontabilidad.domain.model.MonthlySummary
 import com.oryctes.micontabilidad.domain.repository.AccountRepository
@@ -67,9 +68,11 @@ class SummariesViewModel(
     val uiState: StateFlow<SummariesUiState> = combine(
         selectionState,
         accountRepository.getAllAccounts(),
+        transactionRepository.getFilteredTransactions(null, null, null, null),
         monthlySummariesFlow,
         categoryExpensesFlow
-    ) { sel, accounts, monthly, categories ->
+    ) { sel, accounts, allTxs, monthly, categories ->
+        val sortedAccounts = accounts.sortedForDisplay(allTxs)
         val yearIncome = monthly.fold(BigDecimal.ZERO) { acc, m -> acc.add(m.totalIncome) }
         val yearExpense = monthly.fold(BigDecimal.ZERO) { acc, m -> acc.add(m.totalExpense) }
         val yearSavings = yearIncome.subtract(yearExpense)
@@ -78,7 +81,7 @@ class SummariesViewModel(
             selectedYear = sel.year,
             selectedMonth = sel.month,
             selectedAccountId = sel.accountId,
-            accounts = accounts,
+            accounts = sortedAccounts,
             monthlySummaries = monthly,
             categoryExpenses = categories,
             totalYearIncome = yearIncome,

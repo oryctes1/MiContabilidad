@@ -136,4 +136,66 @@ class AccountWithBalanceTest {
         assertEquals(BigDecimal("1100.00"), withBalance.lastBalance)
         assertEquals(LocalDate.of(2026, 10, 1), withBalance.lastBalanceDate)
     }
+
+    @Test
+    fun testAccountWithBalanceSortedForDisplay() {
+        val accOld = Account(id = 1, alias = "Cuenta Antigua", entity = "Banco A", type = AccountType.CHECKING)
+        val accRecent = Account(id = 2, alias = "Cuenta Reciente", entity = "Banco B", type = AccountType.CHECKING)
+        val accNoTx = Account(id = 3, alias = "Cuenta Sin Movimientos", entity = "Banco C", type = AccountType.SAVINGS)
+        val depFar = Account(id = 4, alias = "Depósito Lejano", entity = "Banco D", type = AccountType.DEPOSIT, endDate = LocalDate.of(2027, 6, 1))
+        val depNear = Account(id = 5, alias = "Depósito Cercano", entity = "Banco E", type = AccountType.DEPOSIT, endDate = LocalDate.of(2026, 12, 1))
+        val depNoEnd = Account(id = 6, alias = "Depósito Sin Vencimiento", entity = "Banco F", type = AccountType.DEPOSIT, endDate = null)
+
+        val list = listOf(
+            AccountWithBalance(accOld, BigDecimal("100"), LocalDate.of(2026, 9, 1)),
+            AccountWithBalance(depFar, BigDecimal("10000"), LocalDate.of(2026, 1, 1)),
+            AccountWithBalance(accRecent, BigDecimal("200"), LocalDate.of(2026, 11, 1)),
+            AccountWithBalance(depNoEnd, BigDecimal("5000"), LocalDate.of(2026, 1, 1)),
+            AccountWithBalance(accNoTx, null, null),
+            AccountWithBalance(depNear, BigDecimal("20000"), LocalDate.of(2026, 1, 1))
+        )
+
+        val sorted = list.sortedForDisplay()
+        val sortedIds = sorted.map { it.account.id }
+
+        // Orden esperado:
+        // 1. Cuentas no depósito con movimientos más recientes primero: 2 (Nov), 1 (Sep)
+        // 2. Cuentas sin movimientos: 3
+        // 3. Depósitos por vencimiento más cercano primero: 5 (2026-12-01), 4 (2027-06-01), 6 (null)
+        assertEquals(listOf(2L, 1L, 3L, 5L, 4L, 6L), sortedIds)
+    }
+
+    @Test
+    fun testAccountListSortedForDisplayWithTransactions() {
+        val accOld = Account(id = 1, alias = "Cuenta Antigua", entity = "Banco A", type = AccountType.CHECKING)
+        val accRecent = Account(id = 2, alias = "Cuenta Reciente", entity = "Banco B", type = AccountType.CHECKING)
+        val accNoTx = Account(id = 3, alias = "Cuenta Sin Movimientos", entity = "Banco C", type = AccountType.SAVINGS)
+        val depFar = Account(id = 4, alias = "Depósito Lejano", entity = "Banco D", type = AccountType.DEPOSIT, endDate = LocalDate.of(2027, 6, 1))
+        val depNear = Account(id = 5, alias = "Depósito Cercano", entity = "Banco E", type = AccountType.DEPOSIT, endDate = LocalDate.of(2026, 12, 1))
+
+        val accounts = listOf(depFar, accOld, depNear, accNoTx, accRecent)
+        val txs = listOf(
+            Transaction(
+                id = 10,
+                accountId = 1,
+                operationDate = LocalDate.of(2026, 9, 1),
+                concept = "Tx vieja",
+                amount = BigDecimal("-10"),
+                normalizedHash = "h1"
+            ),
+            Transaction(
+                id = 11,
+                accountId = 2,
+                operationDate = LocalDate.of(2026, 11, 1),
+                concept = "Tx reciente",
+                amount = BigDecimal("-20"),
+                normalizedHash = "h2"
+            )
+        )
+
+        val sorted = accounts.sortedForDisplay(txs)
+        val sortedIds = sorted.map { it.id }
+
+        assertEquals(listOf(2L, 1L, 3L, 5L, 4L), sortedIds)
+    }
 }
