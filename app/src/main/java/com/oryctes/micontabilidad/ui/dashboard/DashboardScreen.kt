@@ -510,7 +510,7 @@ fun AccountMiniCard(
 
     Card(
         onClick = onClick,
-        modifier = Modifier.width(200.dp),
+        modifier = Modifier.width(225.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
@@ -560,24 +560,63 @@ fun AccountMiniCard(
             )
             Spacer(modifier = Modifier.height(10.dp))
             if (accountWithBalance.lastBalance != null) {
-                Text(
-                    text = "${accountWithBalance.lastBalance.toPlainString()} ${account.currency}",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary
-                )
-                val dateSubtitle = if (account.type == AccountType.DEPOSIT && account.endDate != null) {
-                    "Vence el " + account.endDate.format(dateFormatter)
-                } else if (accountWithBalance.lastBalanceDate != null) {
-                    "Saldo a " + accountWithBalance.lastBalanceDate.format(dateFormatter)
-                } else {
-                    "Último saldo"
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.Bottom
+                ) {
+                    Column(modifier = Modifier.weight(1f, fill = false)) {
+                        Text(
+                            text = "${accountWithBalance.lastBalance.toPlainString()} ${account.currency}",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        val dateSubtitle = if (account.type == AccountType.DEPOSIT && account.endDate != null) {
+                            "Vence el " + account.endDate.format(dateFormatter)
+                        } else if (accountWithBalance.lastBalanceDate != null) {
+                            "Saldo a " + accountWithBalance.lastBalanceDate.format(dateFormatter)
+                        } else {
+                            "Último saldo"
+                        }
+                        Text(
+                            text = dateSubtitle,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+
+                    if (account.type == AccountType.DEPOSIT && account.endDate != null) {
+                        val today = java.time.LocalDate.now()
+                        val daysRemaining = java.time.temporal.ChronoUnit.DAYS.between(today, account.endDate)
+                        val (line1, line2) = when {
+                            daysRemaining > 1 -> Pair("Quedan", "$daysRemaining días")
+                            daysRemaining == 1L -> Pair("Queda", "1 día")
+                            daysRemaining == 0L -> Pair("Vence", "hoy")
+                            else -> Pair("Venció hace", "${Math.abs(daysRemaining)} días")
+                        }
+                        Column(
+                            horizontalAlignment = Alignment.End,
+                            modifier = Modifier.padding(start = 6.dp)
+                        ) {
+                            Text(
+                                text = line1,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = line2,
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = if (daysRemaining <= 15) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
                 }
-                Text(
-                    text = dateSubtitle,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
             } else {
                 Text(
                     text = "Sin saldo registrado",
