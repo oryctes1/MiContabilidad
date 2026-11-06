@@ -33,7 +33,7 @@ val appModule = module {
 
     // Repositorios
     single<AccountRepository> { AccountRepositoryImpl(get()) }
-    single<TransactionRepository> { TransactionRepositoryImpl(get(), get(), get(), get()) }
+    single<TransactionRepository> { TransactionRepositoryImpl(get(), get(), get(), get(), get()) }
     single<ImportRepository> {
         ImportRepositoryImpl(
             context = get(),

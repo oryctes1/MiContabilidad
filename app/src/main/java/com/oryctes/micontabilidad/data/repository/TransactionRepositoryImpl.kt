@@ -1,11 +1,15 @@
 package com.oryctes.micontabilidad.data.repository
 
+import com.oryctes.micontabilidad.data.local.dao.AccountDao
 import com.oryctes.micontabilidad.data.local.dao.CategoryDao
 import com.oryctes.micontabilidad.data.local.dao.ImportBatchDao
 import com.oryctes.micontabilidad.data.local.dao.SourceFileDao
 import com.oryctes.micontabilidad.data.local.dao.TransactionDao
+import com.oryctes.micontabilidad.data.local.entity.AccountEntity
 import com.oryctes.micontabilidad.data.local.entity.CategoryEntity
 import com.oryctes.micontabilidad.data.local.entity.TransactionEntity
+import com.oryctes.micontabilidad.domain.model.Account
+import com.oryctes.micontabilidad.domain.model.AccountType
 import com.oryctes.micontabilidad.domain.model.Category
 import com.oryctes.micontabilidad.domain.model.CategorySummary
 import com.oryctes.micontabilidad.domain.model.MonthlySummary
@@ -24,7 +28,8 @@ class TransactionRepositoryImpl(
     private val transactionDao: TransactionDao,
     private val categoryDao: CategoryDao,
     private val importBatchDao: ImportBatchDao? = null,
-    private val sourceFileDao: SourceFileDao? = null
+    private val sourceFileDao: SourceFileDao? = null,
+    private val accountDao: AccountDao? = null
 ) : TransactionRepository {
 
     override fun getFilteredTransactions(
@@ -165,10 +170,54 @@ class TransactionRepositoryImpl(
         val endDate = LocalDate.of(year, 12, 31)
         val today = LocalDate.now()
 
+        val accountsFlow: Flow<List<AccountEntity>> = accountDao?.getAllAccountsFlow()
+            ?: kotlinx.coroutines.flow.flowOf(emptyList())
+
         return combine(
             transactionDao.getFilteredTransactionsFlow(accountId, startDate, endDate, null),
-            transactionDao.getAllTransactionsFlow()
-        ) { yearEntities, allEntities ->
+            transactionDao.getAllTransactionsFlow(),
+            accountsFlow
+        ) { yearEntities, allEntities, allAccountEntities ->
+            val allAccounts = allAccountEntities.map { it.toDomain() }
+            val selectedAccount = accountId?.let { id -> allAccounts.find { it.id == id } }
+
+            // Si la cuenta seleccionada es un depósito individual:
+            if (selectedAccount != null && selectedAccount.type == AccountType.DEPOSIT) {
+                val depStart = selectedAccount.startDate
+                val depEnd = selectedAccount.endDate
+                val initialAmount = selectedAccount.initialAmount ?: BigDecimal.ZERO
+
+                return@combine (1..12).map { month ->
+                    val ym = YearMonth.of(year, month)
+                    val monthStart = ym.atDay(1)
+                    val monthEnd = ym.atEndOfMonth()
+                    val isMonthFuture = (ym.year == today.year && ym.monthValue > today.monthValue) || ym.year > today.year
+
+                    // Un depósito está activo a día 1 si monthStart >= startDate y monthStart <= endDate (si endDate != null)
+                    val isActiveAtStart = !isMonthFuture &&
+                            (depStart == null || !monthStart.isBefore(depStart)) &&
+                            (depEnd == null || !monthStart.isAfter(depEnd))
+
+                    val startBalance = if (isActiveAtStart) initialAmount else null
+
+                    // Saldo al final de mes
+                    val isActiveAtEnd = !isMonthFuture &&
+                            (depStart == null || !monthEnd.isBefore(depStart)) &&
+                            (depEnd == null || !monthEnd.isAfter(depEnd))
+                    val endBalance = if (isActiveAtEnd) initialAmount else null
+
+                    MonthlySummary(
+                        yearMonth = ym,
+                        totalIncome = BigDecimal.ZERO,
+                        totalExpense = BigDecimal.ZERO,
+                        netSavings = BigDecimal.ZERO,
+                        startBalance = startBalance,
+                        endBalance = endBalance,
+                        transactionCount = 0
+                    )
+                }
+            }
+
             val groupedByMonth = yearEntities.groupBy { YearMonth.from(it.operationDate) }
 
             // Todas las transacciones con saldo ordenadas cronológicamente para reconstruir el saldo
@@ -178,6 +227,8 @@ class TransactionRepositoryImpl(
                 .groupBy { it.accountId }
                 .flatMap { (_, txs) -> com.oryctes.micontabilidad.domain.util.TransactionChronologyHelper.sortChronologically(txs) }
                 .sortedBy { it.operationDate }
+
+            val depositAccounts = allAccounts.filter { it.type == AccountType.DEPOSIT && !it.isArchived }
 
             (1..12).map { month ->
                 val ym = YearMonth.of(year, month)
@@ -207,7 +258,7 @@ class TransactionRepositoryImpl(
                     null
                 } else {
                     val txsBeforeMonth = eligibleAllTxsWithBalance.filter { it.operationDate.isBefore(monthStart) }
-                    if (txsBeforeMonth.isEmpty()) {
+                    val regularStartBalance = if (txsBeforeMonth.isEmpty()) {
                         // Si no hay apuntes anteriores a este mes, comprobar si hay en el mes actual
                         val txsInCurrentMonth = eligibleAllTxsWithBalance.filter { !it.operationDate.isAfter(monthEnd) }
                         if (txsInCurrentMonth.isEmpty()) null
@@ -225,9 +276,28 @@ class TransactionRepositoryImpl(
                         txsBeforeMonth.lastOrNull()?.balance
                     } else {
                         val latestBeforeByAccount = txsBeforeMonth.groupBy { it.accountId }
-                            .mapValues { entry -> entry.value.last().balance }
-                        val sum = latestBeforeByAccount.values.filterNotNull().fold(BigDecimal.ZERO) { acc, b -> acc.add(b) }
+                        val sum = latestBeforeByAccount.values.mapNotNull { it.last().balance }.fold(BigDecimal.ZERO) { acc, b -> acc.add(b) }
                         if (latestBeforeByAccount.isNotEmpty()) sum else null
+                    }
+
+                    // Si estamos calculando para "Todas las cuentas" (accountId == null), sumar los depósitos activos a día 1
+                    if (accountId == null) {
+                        val activeDepositsTotal = depositAccounts
+                            .filter { dep ->
+                                val startOk = dep.startDate == null || !monthStart.isBefore(dep.startDate)
+                                val endOk = dep.endDate == null || !monthStart.isAfter(dep.endDate)
+                                startOk && endOk
+                            }
+                            .mapNotNull { it.initialAmount }
+                            .fold(BigDecimal.ZERO) { acc, amt -> acc.add(amt) }
+
+                        if (regularStartBalance != null || activeDepositsTotal > BigDecimal.ZERO) {
+                            (regularStartBalance ?: BigDecimal.ZERO).add(activeDepositsTotal)
+                        } else {
+                            null
+                        }
+                    } else {
+                        regularStartBalance
                     }
                 }
 
@@ -236,7 +306,7 @@ class TransactionRepositoryImpl(
                     null
                 } else {
                     val txsUpToMonth = eligibleAllTxsWithBalance.filter { !it.operationDate.isAfter(monthEnd) }
-                    if (txsUpToMonth.isEmpty()) {
+                    val regularEndBalance = if (txsUpToMonth.isEmpty()) {
                         null
                     } else if (accountId != null) {
                         // Saldo del último apunte de esta cuenta hasta la fecha
@@ -244,9 +314,27 @@ class TransactionRepositoryImpl(
                     } else {
                         // Todas las cuentas: tomar el último saldo conocido de cada cuenta hasta la fecha y sumarlos
                         val latestByAccount = txsUpToMonth.groupBy { it.accountId }
-                            .mapValues { entry -> entry.value.last().balance }
-                        val sum = latestByAccount.values.filterNotNull().fold(BigDecimal.ZERO) { acc, b -> acc.add(b) }
+                        val sum = latestByAccount.values.mapNotNull { it.last().balance }.fold(BigDecimal.ZERO) { acc, b -> acc.add(b) }
                         if (latestByAccount.isNotEmpty()) sum else null
+                    }
+
+                    if (accountId == null) {
+                        val activeDepositsTotal = depositAccounts
+                            .filter { dep ->
+                                val startOk = dep.startDate == null || !monthEnd.isBefore(dep.startDate)
+                                val endOk = dep.endDate == null || !monthEnd.isAfter(dep.endDate)
+                                startOk && endOk
+                            }
+                            .mapNotNull { it.initialAmount }
+                            .fold(BigDecimal.ZERO) { acc, amt -> acc.add(amt) }
+
+                        if (regularEndBalance != null || activeDepositsTotal > BigDecimal.ZERO) {
+                            (regularEndBalance ?: BigDecimal.ZERO).add(activeDepositsTotal)
+                        } else {
+                            null
+                        }
+                    } else {
+                        regularEndBalance
                     }
                 }
 

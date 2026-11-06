@@ -73,7 +73,7 @@ class SummariesViewModel(
         monthlySummariesFlow,
         categoryExpensesFlow
     ) { sel, accounts, allTxs, monthly, categories ->
-        val eligibleAccounts = accounts.filter { it.type != AccountType.DEPOSIT }
+        val eligibleAccounts = accounts.filter { !it.isArchived }
         val sortedAccounts = eligibleAccounts.sortedForDisplay(allTxs)
         val yearIncome = monthly.fold(BigDecimal.ZERO) { acc, m -> acc.add(m.totalIncome) }
         val yearExpense = monthly.fold(BigDecimal.ZERO) { acc, m -> acc.add(m.totalExpense) }
