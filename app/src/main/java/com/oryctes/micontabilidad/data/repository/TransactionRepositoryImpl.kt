@@ -258,26 +258,19 @@ class TransactionRepositoryImpl(
                     null
                 } else {
                     val txsBeforeMonth = eligibleAllTxsWithBalance.filter { it.operationDate.isBefore(monthStart) }
-                    val regularStartBalance = if (txsBeforeMonth.isEmpty()) {
-                        // Si no hay apuntes anteriores a este mes, comprobar si hay en el mes actual
-                        val txsInCurrentMonth = eligibleAllTxsWithBalance.filter { !it.operationDate.isAfter(monthEnd) }
-                        if (txsInCurrentMonth.isEmpty()) null
-                        else {
-                            if (accountId != null) {
-                                txsInCurrentMonth.firstOrNull()?.balance
-                            } else {
-                                val firstByAccount = txsInCurrentMonth.groupBy { it.accountId }
-                                    .mapValues { entry -> entry.value.first().balance }
-                                val sum = firstByAccount.values.filterNotNull().fold(BigDecimal.ZERO) { acc, b -> acc.add(b) }
-                                if (firstByAccount.isNotEmpty()) sum else null
-                            }
-                        }
-                    } else if (accountId != null) {
+                    val regularStartBalance = if (accountId != null) {
+                        // Para una cuenta individual, el saldo a día 1 es estrictamente el saldo tras la última
+                        // operación anterior a dicho día 1 (o null si la cuenta aún no existía o no tenía movimientos previos).
                         txsBeforeMonth.lastOrNull()?.balance
                     } else {
-                        val latestBeforeByAccount = txsBeforeMonth.groupBy { it.accountId }
-                        val sum = latestBeforeByAccount.values.mapNotNull { it.last().balance }.fold(BigDecimal.ZERO) { acc, b -> acc.add(b) }
-                        if (latestBeforeByAccount.isNotEmpty()) sum else null
+                        // Para "Todas las cuentas": sumar el último saldo conocido anterior a día 1 de cada cuenta
+                        if (txsBeforeMonth.isEmpty()) {
+                            null
+                        } else {
+                            val latestBeforeByAccount = txsBeforeMonth.groupBy { it.accountId }
+                            val sum = latestBeforeByAccount.values.mapNotNull { it.last().balance }.fold(BigDecimal.ZERO) { acc, b -> acc.add(b) }
+                            if (latestBeforeByAccount.isNotEmpty()) sum else null
+                        }
                     }
 
                     // Si estamos calculando para "Todas las cuentas" (accountId == null), sumar los depósitos activos a día 1

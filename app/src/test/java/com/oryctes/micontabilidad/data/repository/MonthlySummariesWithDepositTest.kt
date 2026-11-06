@@ -97,18 +97,27 @@ class MonthlySummariesWithDepositTest {
 
         val accountDao = FakeAccountDao(listOf(checkingAcc, depositAcc))
 
-        // Movimientos de cuenta corriente en enero 2026
+        // Movimientos de cuenta corriente en diciembre 2025 para tener saldo previo a 2026
+        val tx0 = TransactionEntity(
+            id = 100,
+            accountId = 1,
+            operationDate = LocalDate.of(2025, 12, 31),
+            concept = "Saldo fin de año",
+            amount = BigDecimal("10000.00"),
+            balance = BigDecimal("10000.00"),
+            normalizedHash = "h0"
+        )
         val tx1 = TransactionEntity(
             id = 101,
             accountId = 1,
             operationDate = LocalDate.of(2026, 1, 10),
             concept = "Nómina",
             amount = BigDecimal("2000.00"),
-            balance = BigDecimal("10000.00"),
+            balance = BigDecimal("12000.00"),
             normalizedHash = "h1"
         )
 
-        val transactionDao = FakeTransactionDao(listOf(tx1))
+        val transactionDao = FakeTransactionDao(listOf(tx0, tx1))
         val categoryDao = FakeCategoryDao()
 
         val repo = TransactionRepositoryImpl(
@@ -122,30 +131,31 @@ class MonthlySummariesWithDepositTest {
 
         // Enero (monthValue = 1):
         // monthStart = 2026-01-01. El depósito empieza el 15/02/2026 -> NO activo a 01/01.
-        // Saldo cuenta = 10000.00 (del primer movimiento del mes).
+        // Saldo cuenta = 10000.00 (de la última del año anterior).
         val jan = summaries[0]
         assertEquals(BigDecimal("10000.00"), jan.startBalance)
 
         // Febrero (monthValue = 2):
         // monthStart = 2026-02-01. El depósito empieza el 15/02/2026 -> NO activo a 01/02.
+        // Saldo cuenta = 12000.00 (tras la nómina de enero).
         val feb = summaries[1]
-        assertEquals(BigDecimal("10000.00"), feb.startBalance)
+        assertEquals(BigDecimal("12000.00"), feb.startBalance)
 
         // Marzo (monthValue = 3):
         // monthStart = 2026-03-01. Depósito activo (desde 15/02 hasta 15/08) -> SÍ activo a 01/03.
-        // Saldo = 10000.00 + 50000.00 = 60000.00
+        // Saldo = 12000.00 + 50000.00 = 62000.00
         val mar = summaries[2]
-        assertEquals(BigDecimal("60000.00"), mar.startBalance)
+        assertEquals(BigDecimal("62000.00"), mar.startBalance)
 
         // Agosto (monthValue = 8):
         // monthStart = 2026-08-01. Depósito vence el 15/08 -> SÍ activo a 01/08.
         val aug = summaries[7]
-        assertEquals(BigDecimal("60000.00"), aug.startBalance)
+        assertEquals(BigDecimal("62000.00"), aug.startBalance)
 
         // Septiembre (monthValue = 9):
         // monthStart = 2026-09-01. Depósito venció el 15/08 -> NO activo a 01/09.
         val sep = summaries[8]
-        assertEquals(BigDecimal("10000.00"), sep.startBalance)
+        assertEquals(BigDecimal("12000.00"), sep.startBalance)
     }
 
     @Test
