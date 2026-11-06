@@ -12,6 +12,7 @@ import com.oryctes.micontabilidad.domain.model.ImportProfile
 import com.oryctes.micontabilidad.domain.model.ReviewStatus
 import com.oryctes.micontabilidad.domain.model.SourceFile
 import com.oryctes.micontabilidad.domain.model.Transaction
+import com.oryctes.micontabilidad.domain.util.BalanceAwareItem
 import java.math.BigDecimal
 import java.time.LocalDate
 
@@ -191,13 +192,13 @@ data class ImportBatchEntity(
 )
 data class TransactionEntity(
     @PrimaryKey(autoGenerate = true)
-    val id: Long = 0,
+    override val id: Long = 0,
     val accountId: Long,
-    val operationDate: LocalDate,
+    override val operationDate: LocalDate,
     val valueDate: LocalDate? = null,
     val concept: String,
-    val amount: BigDecimal,
-    val balance: BigDecimal? = null,
+    override val amount: BigDecimal,
+    override val balance: BigDecimal? = null,
     val currency: String = "EUR",
     val normalizedHash: String,
     val sourceFileId: Long? = null,
@@ -210,7 +211,7 @@ data class TransactionEntity(
     val isCreditCard: Boolean = false,
     val notes: String? = null,
     val createdAt: Long = System.currentTimeMillis()
-) {
+) : BalanceAwareItem {
     fun toDomain(): Transaction = Transaction(
         id = id,
         accountId = accountId,

@@ -2,6 +2,7 @@ package com.oryctes.micontabilidad.domain.model
 
 import java.math.BigDecimal
 import java.time.LocalDate
+import com.oryctes.micontabilidad.domain.util.BalanceAwareItem
 
 enum class ReviewStatus {
     CONFIRMED,
@@ -10,13 +11,13 @@ enum class ReviewStatus {
 }
 
 data class Transaction(
-    val id: Long = 0,
+    override val id: Long = 0,
     val accountId: Long,
-    val operationDate: LocalDate,
+    override val operationDate: LocalDate,
     val valueDate: LocalDate? = null,
     val concept: String,
-    val amount: BigDecimal,
-    val balance: BigDecimal? = null,
+    override val amount: BigDecimal,
+    override val balance: BigDecimal? = null,
     val currency: String = "EUR",
     val normalizedHash: String,
     val sourceFileId: Long? = null,
@@ -29,4 +30,4 @@ data class Transaction(
     val isCategoryManuallyAssigned: Boolean = false,
     val notes: String? = null,
     val createdAt: Long = System.currentTimeMillis()
-)
+) : BalanceAwareItem

@@ -35,7 +35,10 @@ class TransactionRepositoryImpl(
     ): Flow<List<Transaction>> {
         val query = if (searchQuery.isNullOrBlank()) null else searchQuery.trim()
         return transactionDao.getFilteredTransactionsFlow(accountId, startDate, endDate, query)
-            .map { list -> list.map { it.toDomain() } }
+            .map { list ->
+                val domainList = list.map { it.toDomain() }
+                com.oryctes.micontabilidad.domain.util.TransactionChronologyHelper.sortForDisplay(domainList)
+            }
     }
 
     override suspend fun getTransactionById(id: Long): Transaction? {
@@ -169,9 +172,12 @@ class TransactionRepositoryImpl(
             val groupedByMonth = yearEntities.groupBy { YearMonth.from(it.operationDate) }
 
             // Todas las transacciones con saldo ordenadas cronológicamente para reconstruir el saldo
+            // Se agrupan por cuenta y se ordenan de manera estrictamente cronológica resolviendo la secuencia intra-día
             val eligibleAllTxsWithBalance = allEntities
                 .filter { it.balance != null && (accountId == null || it.accountId == accountId) }
-                .sortedWith(compareBy<TransactionEntity> { it.operationDate }.thenBy { it.id })
+                .groupBy { it.accountId }
+                .flatMap { (_, txs) -> com.oryctes.micontabilidad.domain.util.TransactionChronologyHelper.sortChronologically(txs) }
+                .sortedBy { it.operationDate }
 
             (1..12).map { month ->
                 val ym = YearMonth.of(year, month)

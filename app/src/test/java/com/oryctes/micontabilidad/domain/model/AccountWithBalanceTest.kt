@@ -198,4 +198,74 @@ class AccountWithBalanceTest {
 
         assertEquals(listOf(2L, 1L, 3L, 5L, 4L), sortedIds)
     }
+
+    @Test
+    fun testIntraDayChainWithPayrollAndExpensesResolvesCorrectly() {
+        val account = Account(id = 1, alias = "Cuenta Corriente", entity = "Banco", type = AccountType.CHECKING)
+
+        // Escenario exacto del usuario (30/12/2025):
+        // La nómina fue la primera del día, dejando el saldo en 35337.93.
+        // Después se hicieron pagos de PayPal y restaurantes que bajaron el saldo sucesivamente hasta 35243.46.
+        // Al importarse en orden inverso de extracto bancario, la nómina tenía el ID más alto (4814)
+        // y los pagos IDs menores (4810..4813).
+        val txPayroll = Transaction(
+            id = 4814,
+            accountId = 1,
+            operationDate = LocalDate.of(2025, 12, 30),
+            concept = "Nomina recibida",
+            amount = BigDecimal("726.09"),
+            balance = BigDecimal("35337.93"),
+            normalizedHash = "h4814"
+        )
+        val txPaypal1 = Transaction(
+            id = 4813,
+            accountId = 1,
+            operationDate = LocalDate.of(2025, 12, 30),
+            concept = "Recibo PayPal",
+            amount = BigDecimal("-3.99"),
+            balance = BigDecimal("35333.94"),
+            normalizedHash = "h4813"
+        )
+        val txPaypal2 = Transaction(
+            id = 4812,
+            accountId = 1,
+            operationDate = LocalDate.of(2025, 12, 30),
+            concept = "Recibo PayPal",
+            amount = BigDecimal("-5.49"),
+            balance = BigDecimal("35328.45"),
+            normalizedHash = "h4812"
+        )
+        val txPaypal3 = Transaction(
+            id = 4811,
+            accountId = 1,
+            operationDate = LocalDate.of(2025, 12, 30),
+            concept = "Recibo PayPal",
+            amount = BigDecimal("-19.99"),
+            balance = BigDecimal("35308.46"),
+            normalizedHash = "h4811"
+        )
+        val txRestaurant = Transaction(
+            id = 4810,
+            accountId = 1,
+            operationDate = LocalDate.of(2025, 12, 30),
+            concept = "Pago en restaurante",
+            amount = BigDecimal("-65.00"),
+            balance = BigDecimal("35243.46"),
+            normalizedHash = "h4810"
+        )
+
+        val txs = listOf(txRestaurant, txPaypal3, txPaypal2, txPaypal1, txPayroll)
+
+        // 1. Account.withBalance debe tomar como saldo final del día 35243.46 (no la nómina 35337.93)
+        val accWithBal = account.withBalance(txs)
+        assertEquals(BigDecimal("35243.46"), accWithBal.lastBalance)
+
+        // 2. TransactionChronologyHelper.sortChronologically debe poner nómina primera y restaurante último
+        val chrono = com.oryctes.micontabilidad.domain.util.TransactionChronologyHelper.sortChronologically(txs)
+        assertEquals(listOf(4814L, 4813L, 4812L, 4811L, 4810L), chrono.map { it.id })
+
+        // 3. TransactionChronologyHelper.sortForDisplay (vista extracto: más reciente arriba) debe poner restaurante arriba y nómina abajo
+        val display = com.oryctes.micontabilidad.domain.util.TransactionChronologyHelper.sortForDisplay(txs)
+        assertEquals(listOf(4810L, 4811L, 4812L, 4813L, 4814L), display.map { it.id })
+    }
 }

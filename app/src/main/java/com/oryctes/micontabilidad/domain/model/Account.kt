@@ -53,22 +53,12 @@ fun Account.withBalance(transactions: List<Transaction>): AccountWithBalance {
     if (withBalance.isNotEmpty()) {
         val maxDate = withBalance.maxOf { it.operationDate }
         val onMaxDate = withBalance.filter { it.operationDate == maxDate }
-        val latestTx = if (onMaxDate.size == 1) {
-            onMaxDate[0]
-        } else {
-            // Entre varias transacciones del mismo día con saldo, determinar la final
-            // buscando la que no sea predecesora aritmética de ninguna otra
-            onMaxDate.firstOrNull { candidate ->
-                onMaxDate.none { other ->
-                    other != candidate &&
-                        candidate.balance!!.add(other.amount).compareTo(other.balance) == 0
-                }
-            } ?: (onMaxDate.maxByOrNull { it.id } ?: onMaxDate.first())
-        }
+        val latestBalance = com.oryctes.micontabilidad.domain.util.TransactionChronologyHelper.resolveLatestBalance(onMaxDate)
+            ?: onMaxDate.first().balance
         return AccountWithBalance(
             account = this,
-            lastBalance = latestTx.balance,
-            lastBalanceDate = latestTx.operationDate
+            lastBalance = latestBalance,
+            lastBalanceDate = maxDate
         )
     } else if (accountTxs.isNotEmpty()) {
         // En cuentas sin columna de saldo explícito (ej. algunas tarjetas),
