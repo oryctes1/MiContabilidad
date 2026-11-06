@@ -23,6 +23,7 @@ data class MonthlySummary(
     val totalIncome: BigDecimal,
     val totalExpense: BigDecimal,
     val netSavings: BigDecimal,
+    val startBalance: BigDecimal? = null,
     val endBalance: BigDecimal? = null,
     val transactionCount: Int
 )

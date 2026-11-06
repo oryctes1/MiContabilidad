@@ -193,9 +193,40 @@ class TransactionRepositoryImpl(
 
                 val net = income.subtract(expense)
                 val monthEnd = ym.atEndOfMonth()
+                val monthStart = ym.atDay(1)
 
-                // Si el mes está en el futuro respecto a hoy, su saldo final es null
-                val endBalance = if ((ym.year == today.year && ym.monthValue > today.monthValue) || ym.year > today.year) {
+                // Saldo a día 1 del mes (antes de la primera operación del mes, o disponible tras la última del mes anterior)
+                val isMonthFuture = (ym.year == today.year && ym.monthValue > today.monthValue) || ym.year > today.year
+                val startBalance = if (isMonthFuture) {
+                    null
+                } else {
+                    val txsBeforeMonth = eligibleAllTxsWithBalance.filter { it.operationDate.isBefore(monthStart) }
+                    if (txsBeforeMonth.isEmpty()) {
+                        // Si no hay apuntes anteriores a este mes, comprobar si hay en el mes actual
+                        val txsInCurrentMonth = eligibleAllTxsWithBalance.filter { !it.operationDate.isAfter(monthEnd) }
+                        if (txsInCurrentMonth.isEmpty()) null
+                        else {
+                            if (accountId != null) {
+                                txsInCurrentMonth.firstOrNull()?.balance
+                            } else {
+                                val firstByAccount = txsInCurrentMonth.groupBy { it.accountId }
+                                    .mapValues { entry -> entry.value.first().balance }
+                                val sum = firstByAccount.values.filterNotNull().fold(BigDecimal.ZERO) { acc, b -> acc.add(b) }
+                                if (firstByAccount.isNotEmpty()) sum else null
+                            }
+                        }
+                    } else if (accountId != null) {
+                        txsBeforeMonth.lastOrNull()?.balance
+                    } else {
+                        val latestBeforeByAccount = txsBeforeMonth.groupBy { it.accountId }
+                            .mapValues { entry -> entry.value.last().balance }
+                        val sum = latestBeforeByAccount.values.filterNotNull().fold(BigDecimal.ZERO) { acc, b -> acc.add(b) }
+                        if (latestBeforeByAccount.isNotEmpty()) sum else null
+                    }
+                }
+
+                // Saldo a final de mes (mantener para compatibilidad si fuera necesario)
+                val endBalance = if (isMonthFuture) {
                     null
                 } else {
                     val txsUpToMonth = eligibleAllTxsWithBalance.filter { !it.operationDate.isAfter(monthEnd) }
@@ -218,6 +249,7 @@ class TransactionRepositoryImpl(
                     totalIncome = income,
                     totalExpense = expense,
                     netSavings = net,
+                    startBalance = startBalance,
                     endBalance = endBalance,
                     transactionCount = txsInMonth.size
                 )

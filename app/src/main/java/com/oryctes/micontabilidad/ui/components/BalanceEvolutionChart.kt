@@ -172,7 +172,10 @@ fun BalanceEvolutionChart(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    modifier = Modifier.weight(1f, fill = false),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Icon(
                         if (selectedIndex != null) Icons.Default.TouchApp else Icons.Default.Info,
                         contentDescription = null,
@@ -181,18 +184,21 @@ fun BalanceEvolutionChart(
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = if (selectedIndex != null) activePoint?.fullDate ?: "" else "Último saldo registrado (${activePoint?.fullDate ?: ""}):",
+                        text = if (selectedIndex != null) activePoint?.fullDate ?: "" else "Saldo a ${activePoint?.fullDate ?: ""}:",
                         style = MaterialTheme.typography.labelMedium,
                         color = if (selectedIndex != null) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
                         fontWeight = if (selectedIndex != null) FontWeight.Bold else FontWeight.Normal
                     )
                 }
 
+                Spacer(modifier = Modifier.width(8.dp))
+
                 Text(
                     text = activePoint?.let { decimalFormatter.format(it.balance) } ?: "- €",
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold,
-                    color = if (selectedIndex != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                    color = if (selectedIndex != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                    softWrap = false
                 )
             }
         }

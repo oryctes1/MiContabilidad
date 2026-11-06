@@ -181,19 +181,19 @@ fun SummariesScreen(
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Text(
-                            text = "Evolución de Saldo a fin de mes",
+                            text = "Evolución de Saldo a inicio de mes",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         val balancePoints = uiState.monthlySummaries
-                            .filter { it.endBalance != null }
+                            .filter { it.startBalance != null }
                             .map { s ->
                                 val mIdx = s.yearMonth.monthValue - 1
                                 com.oryctes.micontabilidad.ui.components.BalanceDataPoint(
                                     label = monthNamesShort.getOrElse(mIdx) { "${s.yearMonth.monthValue}" },
-                                    fullDate = "${monthNames.getOrElse(mIdx) { "" }} ${s.yearMonth.year}",
-                                    balance = s.endBalance ?: java.math.BigDecimal.ZERO
+                                    fullDate = "1 de ${monthNames.getOrElse(mIdx) { "" }} ${s.yearMonth.year}",
+                                    balance = s.startBalance ?: java.math.BigDecimal.ZERO
                                 )
                             }
                         BalanceEvolutionChart(dataPoints = balancePoints)
