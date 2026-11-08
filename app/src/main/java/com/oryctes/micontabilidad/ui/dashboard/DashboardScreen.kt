@@ -15,6 +15,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Savings
+import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.AccountBalance
 import androidx.compose.material.icons.filled.Add
@@ -224,7 +225,7 @@ fun DashboardScreen(
                             AccountMiniCard(
                                 accountWithBalance = item,
                                 onClick = {
-                                    if (item.account.type == AccountType.DEPOSIT) {
+                                    if (item.account.type == AccountType.DEPOSIT || item.account.type == AccountType.INVESTMENT) {
                                         onNavigateToAccounts()
                                     } else {
                                         onNavigateToAccountTransactions(item.account.id)
@@ -476,6 +477,27 @@ fun InvestmentsDialog(
                                             )
                                         }
                                     }
+                                } else if (acc.type == AccountType.INVESTMENT) {
+                                    if (acc.startDate != null) {
+                                        Spacer(modifier = Modifier.height(6.dp))
+                                        HorizontalDivider()
+                                        Spacer(modifier = Modifier.height(6.dp))
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Text(
+                                                text = "Fecha de inversión:",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                            Text(
+                                                text = acc.startDate.format(dateFormatter),
+                                                fontWeight = FontWeight.SemiBold,
+                                                style = MaterialTheme.typography.bodySmall
+                                            )
+                                        }
+                                    }
                                 }
 
                                 if (!acc.notes.isNullOrBlank()) {
@@ -522,6 +544,7 @@ fun AccountMiniCard(
                 val icon = when (account.type) {
                     AccountType.CREDIT_CARD, AccountType.DEBIT_CARD -> Icons.Default.CreditCard
                     AccountType.DEPOSIT -> Icons.Default.Savings
+                    AccountType.INVESTMENT -> Icons.Default.BarChart
                     else -> Icons.Default.AccountBalance
                 }
                 Icon(
@@ -531,6 +554,8 @@ fun AccountMiniCard(
                 )
                 val topDateStr = if (account.type == AccountType.DEPOSIT && account.endDate != null) {
                     "Vto: " + account.endDate.format(dateFormatter)
+                } else if (account.type == AccountType.INVESTMENT && account.startDate != null) {
+                    "Inv: " + account.startDate.format(dateFormatter)
                 } else if (accountWithBalance.lastBalanceDate != null) {
                     accountWithBalance.lastBalanceDate.format(dateFormatter)
                 } else null
@@ -576,6 +601,9 @@ fun AccountMiniCard(
                         )
                         val dateSubtitle = if (account.type == AccountType.DEPOSIT && account.endDate != null) {
                             "Vence el " + account.endDate.format(dateFormatter)
+                        } else if (account.type == AccountType.INVESTMENT && (account.startDate != null || accountWithBalance.lastBalanceDate != null)) {
+                            val d = account.startDate ?: accountWithBalance.lastBalanceDate
+                            "Invertido el " + d?.format(dateFormatter)
                         } else if (accountWithBalance.lastBalanceDate != null) {
                             "Saldo a " + accountWithBalance.lastBalanceDate.format(dateFormatter)
                         } else {

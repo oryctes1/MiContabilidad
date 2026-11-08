@@ -45,6 +45,37 @@ fun Account.withBalance(transactions: List<Transaction>): AccountWithBalance {
             lastBalanceDate = this.startDate ?: LocalDate.now()
         )
     }
+    if (this.type == AccountType.INVESTMENT) {
+        val accountTxs = transactions.filter {
+            it.accountId == this.id && it.reviewStatus != ReviewStatus.DISCARDED
+        }
+        val withBalance = accountTxs.filter { it.balance != null }
+        if (withBalance.isNotEmpty()) {
+            val maxDate = withBalance.maxOf { it.operationDate }
+            val onMaxDate = withBalance.filter { it.operationDate == maxDate }
+            val latestTx = if (onMaxDate.size == 1) {
+                onMaxDate[0]
+            } else {
+                onMaxDate.firstOrNull { candidate ->
+                    onMaxDate.none { other ->
+                        other != candidate &&
+                            candidate.balance!!.add(other.amount).compareTo(other.balance) == 0
+                    }
+                } ?: (onMaxDate.maxByOrNull { it.id } ?: onMaxDate.first())
+            }
+            return AccountWithBalance(
+                account = this,
+                lastBalance = latestTx.balance,
+                lastBalanceDate = latestTx.operationDate
+            )
+        } else {
+            return AccountWithBalance(
+                account = this,
+                lastBalance = this.initialAmount,
+                lastBalanceDate = this.startDate ?: LocalDate.now()
+            )
+        }
+    }
     val accountTxs = transactions.filter {
         it.accountId == this.id && it.reviewStatus != ReviewStatus.DISCARDED
     }
@@ -136,8 +167,8 @@ fun List<Account>.sortedForDisplay(transactions: List<Transaction>): List<Accoun
         .mapValues { entry -> entry.value.maxOfOrNull { it.operationDate } }
 
     val regularSorted = regular.sortedWith { a, b ->
-        val dateA = latestDateByAccountId[a.id]
-        val dateB = latestDateByAccountId[b.id]
+        val dateA = latestDateByAccountId[a.id] ?: a.startDate
+        val dateB = latestDateByAccountId[b.id] ?: b.startDate
         when {
             dateA != null && dateB != null -> {
                 val cmp = dateB.compareTo(dateA) // Descendente: mas reciente primero

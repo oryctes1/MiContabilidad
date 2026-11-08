@@ -1131,7 +1131,13 @@ fun CreateAccountDialog(
                             expanded = typeExpanded,
                             onDismissRequest = { typeExpanded = false }
                         ) {
-                            AccountType.entries.forEach { t ->
+                            val selectableImportTypes = listOf(
+                                AccountType.CHECKING,
+                                AccountType.SAVINGS,
+                                AccountType.DEPOSIT,
+                                AccountType.INVESTMENT
+                            )
+                            selectableImportTypes.forEach { t ->
                                 DropdownMenuItem(
                                     text = {
                                         Text(t.displayName)

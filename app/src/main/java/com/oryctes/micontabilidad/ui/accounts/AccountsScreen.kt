@@ -15,6 +15,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Savings
+import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.AccountBalance
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Archive
@@ -451,6 +452,7 @@ fun AccountCard(
                     val icon = when (account.type) {
                         AccountType.CREDIT_CARD, AccountType.DEBIT_CARD -> Icons.Default.CreditCard
                         AccountType.DEPOSIT -> Icons.Default.Savings
+                        AccountType.INVESTMENT -> Icons.Default.BarChart
                         else -> Icons.Default.AccountBalance
                     }
                     Icon(
@@ -506,12 +508,23 @@ fun AccountCard(
                     ) {
                         Column {
                             Text(
-                                text = if (account.type == AccountType.DEPOSIT) "Importe depositado" else "Último saldo conocido",
+                                text = when (account.type) {
+                                    AccountType.DEPOSIT -> "Importe depositado"
+                                    AccountType.INVESTMENT -> "Importe invertido"
+                                    else -> "Último saldo conocido"
+                                },
                                 style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.SemiBold,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
-                            if (accountWithBalance.lastBalanceDate != null) {
+                            if (account.type == AccountType.INVESTMENT && (account.startDate != null || accountWithBalance.lastBalanceDate != null)) {
+                                val d = account.startDate ?: accountWithBalance.lastBalanceDate
+                                Text(
+                                    text = "Fecha inversión: ${d?.format(dateFormatter)}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            } else if (accountWithBalance.lastBalanceDate != null) {
                                 Text(
                                     text = "A fecha: ${accountWithBalance.lastBalanceDate.format(dateFormatter)}",
                                     style = MaterialTheme.typography.bodySmall,
@@ -526,9 +539,10 @@ fun AccountCard(
                             }
                         }
 
-                        if (accountWithBalance.lastBalance != null) {
+                        val displayBalance = accountWithBalance.lastBalance ?: account.initialAmount
+                        if (displayBalance != null) {
                             Text(
-                                text = "${accountWithBalance.lastBalance.toPlainString()} ${account.currency}",
+                                text = "${displayBalance.toPlainString()} ${account.currency}",
                                 style = MaterialTheme.typography.titleLarge,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.primary
@@ -732,6 +746,20 @@ fun AccountFormDialog(
         }
     }
 
+    val selectableTypes = remember(account) {
+        val base = listOf(
+            AccountType.CHECKING,
+            AccountType.SAVINGS,
+            AccountType.DEPOSIT,
+            AccountType.INVESTMENT
+        )
+        if (account != null && account.type !in base) {
+            listOf(account.type) + base
+        } else {
+            base
+        }
+    }
+
     val scrollState = rememberScrollState()
 
     AlertDialog(
@@ -739,9 +767,17 @@ fun AccountFormDialog(
         title = {
             Text(
                 if (account == null) {
-                    if (selectedType == AccountType.DEPOSIT) "Nuevo Depósito" else "Nueva Cuenta o Tarjeta"
+                    when (selectedType) {
+                        AccountType.DEPOSIT -> "Nuevo Depósito"
+                        AccountType.INVESTMENT -> "Nuevo Producto de Inversión"
+                        else -> "Nueva Cuenta"
+                    }
                 } else {
-                    if (selectedType == AccountType.DEPOSIT) "Editar Depósito" else "Editar Cuenta"
+                    when (selectedType) {
+                        AccountType.DEPOSIT -> "Editar Depósito"
+                        AccountType.INVESTMENT -> "Editar Inversión"
+                        else -> "Editar Cuenta"
+                    }
                 }
             )
         },
@@ -756,7 +792,15 @@ fun AccountFormDialog(
                     value = alias,
                     onValueChange = { alias = it },
                     label = { Text("Alias / Nombre *", style = MaterialTheme.typography.bodySmall) },
-                    placeholder = { Text(if (selectedType == AccountType.DEPOSIT) "ej. Depósito 12M Openbank" else "ej. Nómina Principal") },
+                    placeholder = {
+                        Text(
+                            when (selectedType) {
+                                AccountType.DEPOSIT -> "ej. Depósito 12M Openbank"
+                                AccountType.INVESTMENT -> "ej. Fondo Indexado MSCI World, Letras del Tesoro..."
+                                else -> "ej. Nómina Principal"
+                            }
+                        )
+                    },
                     singleLine = true,
                     textStyle = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.fillMaxWidth()
@@ -789,7 +833,7 @@ fun AccountFormDialog(
                         expanded = expandedTypeMenu,
                         onDismissRequest = { expandedTypeMenu = false }
                     ) {
-                        AccountType.entries.forEach { type ->
+                        selectableTypes.forEach { type ->
                             DropdownMenuItem(
                                 text = { Text(type.displayName) },
                                 onClick = {
@@ -919,6 +963,54 @@ fun AccountFormDialog(
                             modifier = Modifier.weight(1.1f)
                         )
                     }
+                } else if (selectedType == AccountType.INVESTMENT) {
+                    // Campos para Inversión: Importe invertido y Fecha de inversión
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        OutlinedTextField(
+                            value = amountText,
+                            onValueChange = { amountText = it },
+                            label = { Text("Importe invertido (€) *", style = MaterialTheme.typography.bodySmall) },
+                            placeholder = { Text("10000.00") },
+                            singleLine = true,
+                            textStyle = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.weight(1.2f)
+                        )
+                        OutlinedTextField(
+                            value = currency,
+                            onValueChange = { currency = it },
+                            label = { Text("Moneda", style = MaterialTheme.typography.bodySmall) },
+                            singleLine = true,
+                            textStyle = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.weight(0.8f)
+                        )
+                    }
+
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        OutlinedTextField(
+                            value = startDateVal.format(dateFormatter),
+                            onValueChange = {},
+                            readOnly = true,
+                            label = { Text("Fecha de inversión", style = MaterialTheme.typography.bodySmall) },
+                            trailingIcon = {
+                                IconButton(onClick = {
+                                    DatePickerDialog(
+                                        context,
+                                        { _, year, month, dayOfMonth ->
+                                            startDateVal = LocalDate.of(year, month + 1, dayOfMonth)
+                                        },
+                                        startDateVal.year,
+                                        startDateVal.monthValue - 1,
+                                        startDateVal.dayOfMonth
+                                    ).show()
+                                }) {
+                                    Icon(Icons.Default.CalendarMonth, contentDescription = "Seleccionar fecha", modifier = Modifier.size(20.dp))
+                                }
+                            },
+                            singleLine = true,
+                            textStyle = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
                 } else {
                     // Campos para cuentas estándar / tarjetas
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -964,19 +1056,22 @@ fun AccountFormDialog(
                             calculatedExpectedInterest
                         }
 
+                        val isDeposit = selectedType == AccountType.DEPOSIT
+                        val isInvestment = selectedType == AccountType.INVESTMENT
+
                         onSave(
                             alias,
                             entity,
                             selectedType,
                             currency,
-                            if (selectedType == AccountType.DEPOSIT) null else last4,
+                            if (isDeposit || isInvestment) null else last4,
                             notes,
-                            parsedAmount,
-                            parsedRate,
-                            if (selectedType == AccountType.DEPOSIT) startDateVal else null,
-                            if (selectedType == AccountType.DEPOSIT) termMonthsInt else null,
-                            if (selectedType == AccountType.DEPOSIT) calculatedEndDate else null,
-                            if (selectedType == AccountType.DEPOSIT) finalExpected else null
+                            if (isDeposit || isInvestment) parsedAmount else null,
+                            if (isDeposit) parsedRate else null,
+                            if (isDeposit || isInvestment) startDateVal else null,
+                            if (isDeposit) termMonthsInt else null,
+                            if (isDeposit) calculatedEndDate else null,
+                            if (isDeposit) finalExpected else null
                         )
                     }
                 },

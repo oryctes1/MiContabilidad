@@ -50,9 +50,12 @@ class DashboardViewModel(
         // Separar cuentas normales de depósitos / inversiones
         val accountsWithBalance = accounts.map { it.withBalance(allTxs) }.sortedForDisplay()
         
-        // El importe de depósitos NO computa para calcular el saldo total estimado
-        val nonDepositAccounts = accountsWithBalance.filter { it.account.type != com.oryctes.micontabilidad.domain.model.AccountType.DEPOSIT }
-        val balanceSum = nonDepositAccounts.mapNotNull { it.lastBalance }
+        // El importe de depósitos e inversiones NO computa para calcular el saldo líquido total estimado
+        val liquidAccounts = accountsWithBalance.filter {
+            it.account.type != com.oryctes.micontabilidad.domain.model.AccountType.DEPOSIT &&
+            it.account.type != com.oryctes.micontabilidad.domain.model.AccountType.INVESTMENT
+        }
+        val balanceSum = liquidAccounts.mapNotNull { it.lastBalance }
             .fold(BigDecimal.ZERO) { acc, b -> acc.add(b) }
 
         // Inversiones: depósitos y cuentas de inversión
