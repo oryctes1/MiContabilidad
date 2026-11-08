@@ -47,23 +47,23 @@ class DashboardViewModel(
         val currentMonth = summaries.find { it.yearMonth == currentYearMonth }
         val recent = allTxs.take(5)
 
-        // Separar cuentas normales de depósitos / inversiones
-        val accountsWithBalance = accounts.map { it.withBalance(allTxs) }.sortedForDisplay()
-        
-        // El importe de depósitos e inversiones NO computa para calcular el saldo líquido total estimado
-        val liquidAccounts = accountsWithBalance.filter {
-            it.account.type != com.oryctes.micontabilidad.domain.model.AccountType.DEPOSIT &&
-            it.account.type != com.oryctes.micontabilidad.domain.model.AccountType.INVESTMENT
+        val today = LocalDate.now()
+        // Cuentas activas: no archivadas y depósitos no vencidos por fecha
+        val activeAccounts = accounts.filter {
+            !it.isArchived && !(it.type == com.oryctes.micontabilidad.domain.model.AccountType.DEPOSIT && it.endDate != null && !it.endDate.isAfter(today))
         }
-        val balanceSum = liquidAccounts.mapNotNull { it.lastBalance }
-            .fold(BigDecimal.ZERO) { acc, b -> acc.add(b) }
+        val accountsWithBalance = activeAccounts.map { it.withBalance(allTxs) }.sortedForDisplay()
 
-        // Inversiones: depósitos y cuentas de inversión
+        // Inversiones: depósitos y cuentas de inversión activas
         val investmentAccounts = accountsWithBalance.filter {
             it.account.type == com.oryctes.micontabilidad.domain.model.AccountType.DEPOSIT ||
             it.account.type == com.oryctes.micontabilidad.domain.model.AccountType.INVESTMENT
         }
         val totalInvestments = investmentAccounts.mapNotNull { it.lastBalance }
+            .fold(BigDecimal.ZERO) { acc, b -> acc.add(b) }
+
+        // Saldo total estimado: cómputo de todo lo activo (incluyendo depósitos e inversiones activas)
+        val balanceSum = accountsWithBalance.mapNotNull { it.lastBalance }
             .fold(BigDecimal.ZERO) { acc, b -> acc.add(b) }
 
         DashboardUiState(
