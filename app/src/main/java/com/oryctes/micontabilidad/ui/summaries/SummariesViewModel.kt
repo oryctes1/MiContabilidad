@@ -79,13 +79,16 @@ class SummariesViewModel(
         val yearExpense = monthly.fold(BigDecimal.ZERO) { acc, m -> acc.add(m.totalExpense) }
         val yearSavings = yearIncome.subtract(yearExpense)
 
+        // Agrupar en la categoría Hogar también agua, luz, gas y comunicaciones exclusivamente para informes
+        val chartCategories = categories.groupHogarAndUtilities()
+
         SummariesUiState(
             selectedYear = sel.year,
             selectedMonth = sel.month,
             selectedAccountId = sel.accountId,
             accounts = sortedAccounts,
             monthlySummaries = monthly,
-            categoryExpenses = categories,
+            categoryExpenses = chartCategories,
             totalYearIncome = yearIncome,
             totalYearExpense = yearExpense,
             totalYearSavings = yearSavings
@@ -107,4 +110,51 @@ class SummariesViewModel(
     fun setAccountId(accountId: Long?) {
         _selectedAccountId.value = accountId
     }
+}
+
+
+/**
+ * Agrupa en la categoría 'Hogar' los gastos de agua, luz, gas y comunicaciones
+ * exclusivamente para los gráficos de gastos de la pestaña Informes.
+ */
+private fun List<CategorySummary>.groupHogarAndUtilities(): List<CategorySummary> {
+    if (this.isEmpty()) return this
+
+    val totalExpense = this.fold(BigDecimal.ZERO) { acc, c -> acc.add(c.totalAmount) }
+    if (totalExpense.compareTo(BigDecimal.ZERO) == 0) return this
+
+    fun isHogarOrUtility(name: String): Boolean {
+        val n = name.trim().lowercase()
+        return n == "hogar" ||
+               n == "agua" ||
+               n == "luz" ||
+               n == "gas" ||
+               n == "comunicaciones" ||
+               n == "comunicación" ||
+               n == "comunicacion" ||
+               n == "agua, luz y gas" ||
+               n == "agua, luz, gas" ||
+               n == "luz, gas y agua" ||
+               n == "suministros"
+    }
+
+    val (hogarAndUtilities, otherCategories) = this.partition { isHogarOrUtility(it.categoryName) }
+    if (hogarAndUtilities.isEmpty()) {
+        return this
+    }
+
+    val mergedTotal = hogarAndUtilities.fold(BigDecimal.ZERO) { acc, c -> acc.add(c.totalAmount) }
+    val hogarOriginal = hogarAndUtilities.find { it.categoryName.trim().equals("hogar", ignoreCase = true) }
+    val colorHex = hogarOriginal?.colorHex ?: "#6D4C41"
+
+    val percentage = (mergedTotal.divide(totalExpense, 4, java.math.RoundingMode.HALF_UP).toFloat() * 100f)
+
+    val mergedHogar = CategorySummary(
+        categoryName = "Hogar",
+        colorHex = colorHex,
+        totalAmount = mergedTotal,
+        percentage = percentage
+    )
+
+    return (otherCategories + mergedHogar).sortedByDescending { it.totalAmount }
 }
