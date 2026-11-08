@@ -125,10 +125,19 @@ class TransactionsViewModel(
             }
         }
 
-        val finalTxs = if (filter.onlyPendingReview) {
+        val filteredByReview = if (filter.onlyPendingReview) {
             filteredByType.filter { it.reviewStatus == ReviewStatus.PENDING_REVIEW || it.isPossibleDuplicate }
         } else {
             filteredByType
+        }
+
+        // Filtrar de forma estricta por rango de fechas (Desde / Hasta), cuenta y texto de búsqueda
+        val finalTxs = filteredByReview.filter { tx ->
+            val matchesAccount = filter.selectedAccountId == null || tx.accountId == filter.selectedAccountId
+            val afterStart = filter.startDate == null || !tx.operationDate.isBefore(filter.startDate)
+            val beforeEnd = filter.endDate == null || !tx.operationDate.isAfter(filter.endDate)
+            val matchesSearch = filter.searchQuery.isBlank() || tx.concept.contains(filter.searchQuery.trim(), ignoreCase = true)
+            matchesAccount && afterStart && beforeEnd && matchesSearch
         }
 
         // Suma aritmética directa de todos los apuntes visibles (coincide con el extracto bancario)
@@ -333,11 +342,15 @@ class TransactionsViewModel(
     }
 
     fun onStartDateChange(start: LocalDate?) {
-        _filterState.value = _filterState.value.copy(startDate = start)
+        val currentEnd = _filterState.value.endDate
+        val adjustedEnd = if (start != null && currentEnd != null && start.isAfter(currentEnd)) start else currentEnd
+        _filterState.value = _filterState.value.copy(startDate = start, endDate = adjustedEnd)
     }
 
     fun onEndDateChange(end: LocalDate?) {
-        _filterState.value = _filterState.value.copy(endDate = end)
+        val currentStart = _filterState.value.startDate
+        val adjustedStart = if (end != null && currentStart != null && end.isBefore(currentStart)) end else currentStart
+        _filterState.value = _filterState.value.copy(startDate = adjustedStart, endDate = end)
     }
 
     fun clearDateFilter() {
