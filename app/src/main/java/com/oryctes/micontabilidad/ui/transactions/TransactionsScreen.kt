@@ -318,11 +318,14 @@ fun TransactionsScreen(
                 startDate = uiState.filterState.startDate,
                 endDate = uiState.filterState.endDate,
                 selectedMonth = uiState.filterState.selectedMonth,
+                selectedYear = uiState.filterState.selectedYear,
                 earliestHistoricalDate = uiState.earliestHistoricalDate,
                 latestHistoricalDate = uiState.latestHistoricalDate,
                 onStartDateSelected = { viewModel.onStartDateChange(it) },
                 onEndDateSelected = { viewModel.onEndDateChange(it) },
-                onMonthSelected = { viewModel.onMonthSelect(it) },
+                onMonthSelected = { month, year -> viewModel.onMonthSelect(month, year) },
+                onPreviousMonth = { viewModel.onPreviousMonth() },
+                onNextMonth = { viewModel.onNextMonth() },
                 onClearAllDates = { viewModel.clearDateFilter() }
             )
 
@@ -1490,17 +1493,25 @@ fun DatePeriodFilterRow(
     startDate: LocalDate?,
     endDate: LocalDate?,
     selectedMonth: Int?,
+    selectedYear: Int?,
     earliestHistoricalDate: LocalDate?,
     latestHistoricalDate: LocalDate?,
     onStartDateSelected: (LocalDate?) -> Unit,
     onEndDateSelected: (LocalDate?) -> Unit,
-    onMonthSelected: (Int?) -> Unit,
+    onMonthSelected: (Int?, Int?) -> Unit,
+    onPreviousMonth: () -> Unit,
+    onNextMonth: () -> Unit,
     onClearAllDates: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     val dateFormatter = remember { DateTimeFormatter.ofPattern("dd/MM/yy") }
     var monthMenuExpanded by remember { mutableStateOf(false) }
+
+    val currentYear = remember { LocalDate.now().year }
+    var viewingYear by remember(selectedYear) {
+        mutableStateOf(selectedYear ?: currentYear)
+    }
 
     val monthNamesShort = remember {
         listOf("Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic")
@@ -1539,10 +1550,10 @@ fun DatePeriodFilterRow(
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 1.dp),
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        horizontalArrangement = Arrangement.spacedBy(3.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Botón activable "From"
+        // Selector "From" más estrecho
         DateFilterChip(
             labelPrefix = "From",
             selectedDate = startDate,
@@ -1551,10 +1562,10 @@ fun DatePeriodFilterRow(
             dateFormatter = dateFormatter,
             onClick = { pickStartDate() },
             onClear = { onStartDateSelected(null) },
-            modifier = Modifier.weight(1f)
+            modifier = Modifier.weight(0.95f)
         )
 
-        // Botón activable "To"
+        // Selector "To" más estrecho
         DateFilterChip(
             labelPrefix = "To",
             selectedDate = endDate,
@@ -1563,14 +1574,30 @@ fun DatePeriodFilterRow(
             dateFormatter = dateFormatter,
             onClick = { pickEndDate() },
             onClear = { onEndDateSelected(null) },
-            modifier = Modifier.weight(1f)
+            modifier = Modifier.weight(0.95f)
         )
 
-        // Selector desplegable de mes completo del año en curso (algo más ancho)
+        // Triángulo sólido ascendente (▲) para ir al mes anterior
+        IconButton(
+            onClick = onPreviousMonth,
+            modifier = Modifier.size(28.dp)
+        ) {
+            Text(
+                text = "▲",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
+
+        // Selector de mes y año en formato mm/aa con desplegable
         Box {
             val isMonthActive = selectedMonth != null
+            val activeYear = selectedYear ?: currentYear
             val monthLabel = if (selectedMonth != null) {
-                monthNamesShort.getOrElse(selectedMonth - 1) { "Mes $selectedMonth" }
+                val mm = String.format("%02d", selectedMonth)
+                val aa = String.format("%02d", activeYear % 100)
+                "$mm/$aa"
             } else {
                 "Mes"
             }
@@ -1579,7 +1606,10 @@ fun DatePeriodFilterRow(
                 modifier = Modifier
                     .height(32.dp)
                     .defaultMinSize(minWidth = 72.dp)
-                    .clickable { monthMenuExpanded = true },
+                    .clickable {
+                        viewingYear = selectedYear ?: currentYear
+                        monthMenuExpanded = true
+                    },
                 shape = RoundedCornerShape(8.dp),
                 color = if (isMonthActive) {
                     MaterialTheme.colorScheme.primaryContainer
@@ -1593,8 +1623,7 @@ fun DatePeriodFilterRow(
                 }
             ) {
                 Row(
-                    modifier = Modifier
-                        .padding(horizontal = 8.dp),
+                    modifier = Modifier.padding(horizontal = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.Center
                 ) {
@@ -1607,7 +1636,7 @@ fun DatePeriodFilterRow(
                     Spacer(modifier = Modifier.width(2.dp))
                     if (isMonthActive) {
                         IconButton(
-                            onClick = { onMonthSelected(null) },
+                            onClick = { onMonthSelected(null, null) },
                             modifier = Modifier.size(18.dp)
                         ) {
                             Icon(
@@ -1632,30 +1661,91 @@ fun DatePeriodFilterRow(
                 expanded = monthMenuExpanded,
                 onDismissRequest = { monthMenuExpanded = false }
             ) {
+                // Selector de año en la cabecera del desplegable
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    IconButton(
+                        onClick = { viewingYear -= 1 },
+                        modifier = Modifier.size(30.dp)
+                    ) {
+                        Text(
+                            text = "▲",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+
+                    Text(
+                        text = "$viewingYear",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+
+                    IconButton(
+                        onClick = { viewingYear += 1 },
+                        modifier = Modifier.size(30.dp)
+                    ) {
+                        Text(
+                            text = "▼",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+
+                HorizontalDivider(
+                    modifier = Modifier.padding(vertical = 4.dp),
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                )
+
                 monthNamesFull.forEachIndexed { index, name ->
                     val m = index + 1
+                    val isCurrentSelected = selectedMonth == m && (selectedYear ?: currentYear) == viewingYear
                     DropdownMenuItem(
                         text = {
+                            val mm = String.format("%02d", m)
+                            val aa = String.format("%02d", viewingYear % 100)
                             Text(
-                                text = name,
-                                fontWeight = if (selectedMonth == m) FontWeight.Bold else FontWeight.Normal,
-                                color = if (selectedMonth == m) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                text = "$name ($mm/$aa)",
+                                fontWeight = if (isCurrentSelected) FontWeight.Bold else FontWeight.Normal,
+                                color = if (isCurrentSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
                             )
                         },
                         onClick = {
                             monthMenuExpanded = false
-                            onMonthSelected(m)
+                            onMonthSelected(m, viewingYear)
                         }
                     )
                 }
             }
         }
 
+        // Triángulo sólido descendente (▼) para ir al mes siguiente
+        IconButton(
+            onClick = onNextMonth,
+            modifier = Modifier.size(28.dp)
+        ) {
+            Text(
+                text = "▼",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
+
         // Botón rápido para limpiar filtros si alguno está activo
         if (startDate != null || endDate != null || selectedMonth != null) {
             IconButton(
                 onClick = onClearAllDates,
-                modifier = Modifier.size(32.dp)
+                modifier = Modifier.size(28.dp)
             ) {
                 Icon(
                     Icons.Default.Close,
@@ -1702,7 +1792,7 @@ fun DateFilterChip(
         Row(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 8.dp),
+                .padding(horizontal = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
@@ -1710,13 +1800,6 @@ fun DateFilterChip(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.weight(1f)
             ) {
-                Icon(
-                    Icons.Default.DateRange,
-                    contentDescription = null,
-                    modifier = Modifier.size(15.dp),
-                    tint = if (isCustomActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Spacer(modifier = Modifier.width(6.dp))
                 Text(
                     text = "$labelPrefix: $dateText",
                     style = MaterialTheme.typography.labelSmall,
@@ -1730,13 +1813,13 @@ fun DateFilterChip(
             if (isCustomActive) {
                 IconButton(
                     onClick = onClear,
-                    modifier = Modifier.size(22.dp)
+                    modifier = Modifier.size(20.dp)
                 ) {
                     Icon(
                         Icons.Default.Close,
                         contentDescription = "Limpiar $labelPrefix",
                         tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                        modifier = Modifier.size(14.dp)
+                        modifier = Modifier.size(12.dp)
                     )
                 }
             }
