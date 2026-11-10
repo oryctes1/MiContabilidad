@@ -228,7 +228,7 @@ class TransactionRepositoryImpl(
                 .flatMap { (_, txs) -> com.oryctes.micontabilidad.domain.util.TransactionChronologyHelper.sortChronologically(txs) }
                 .sortedBy { it.operationDate }
 
-            val depositAccounts = allAccounts.filter { it.type == AccountType.DEPOSIT && !it.isArchived }
+            val depositAccounts = allAccounts.filter { it.type == AccountType.DEPOSIT }
 
             (1..12).map { month ->
                 val ym = YearMonth.of(year, month)
