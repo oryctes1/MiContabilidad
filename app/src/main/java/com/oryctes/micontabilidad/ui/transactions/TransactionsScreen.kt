@@ -1577,168 +1577,174 @@ fun DatePeriodFilterRow(
             modifier = Modifier.weight(0.95f)
         )
 
-        // Triángulo sólido ascendente (▲) para ir al mes anterior
-        IconButton(
-            onClick = onPreviousMonth,
-            modifier = Modifier.size(28.dp)
+        // Contenedor integrado del selector de mes con sus triángulos juntos
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(0.dp)
         ) {
-            Text(
-                text = "▲",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary
-            )
-        }
-
-        // Selector de mes y año en formato mm/aa con desplegable
-        Box {
-            val isMonthActive = selectedMonth != null
-            val activeYear = selectedYear ?: currentYear
-            val monthLabel = if (selectedMonth != null) {
-                val mm = String.format("%02d", selectedMonth)
-                val aa = String.format("%02d", activeYear % 100)
-                "$mm/$aa"
-            } else {
-                "Mes"
-            }
-
-            Surface(
-                modifier = Modifier
-                    .height(32.dp)
-                    .defaultMinSize(minWidth = 72.dp)
-                    .clickable {
-                        viewingYear = selectedYear ?: currentYear
-                        monthMenuExpanded = true
-                    },
-                shape = RoundedCornerShape(8.dp),
-                color = if (isMonthActive) {
-                    MaterialTheme.colorScheme.primaryContainer
-                } else {
-                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                },
-                border = if (isMonthActive) {
-                    androidx.compose.foundation.BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary)
-                } else {
-                    androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
-                }
+            // Triángulo sólido ascendente (▲) para ir al mes anterior
+            IconButton(
+                onClick = onPreviousMonth,
+                modifier = Modifier.size(24.dp)
             ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center
-                ) {
-                    Text(
-                        text = monthLabel,
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = if (isMonthActive) FontWeight.Bold else FontWeight.Medium,
-                        color = if (isMonthActive) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(modifier = Modifier.width(2.dp))
-                    if (isMonthActive) {
-                        IconButton(
-                            onClick = { onMonthSelected(null, null) },
-                            modifier = Modifier.size(18.dp)
-                        ) {
-                            Icon(
-                                Icons.Default.Close,
-                                contentDescription = "Limpiar mes",
-                                tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                modifier = Modifier.size(13.dp)
-                            )
-                        }
-                    } else {
-                        Icon(
-                            Icons.Default.ArrowDropDown,
-                            contentDescription = "Desplegar meses",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(16.dp)
-                        )
-                    }
-                }
-            }
-
-            DropdownMenu(
-                expanded = monthMenuExpanded,
-                onDismissRequest = { monthMenuExpanded = false }
-            ) {
-                // Selector de año en la cabecera del desplegable
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 8.dp, vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    IconButton(
-                        onClick = { viewingYear -= 1 },
-                        modifier = Modifier.size(30.dp)
-                    ) {
-                        Text(
-                            text = "▲",
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                    }
-
-                    Text(
-                        text = "$viewingYear",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-
-                    IconButton(
-                        onClick = { viewingYear += 1 },
-                        modifier = Modifier.size(30.dp)
-                    ) {
-                        Text(
-                            text = "▼",
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                    }
-                }
-
-                HorizontalDivider(
-                    modifier = Modifier.padding(vertical = 4.dp),
-                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                Text(
+                    text = "▲",
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
                 )
+            }
 
-                monthNamesFull.forEachIndexed { index, name ->
-                    val m = index + 1
-                    val isCurrentSelected = selectedMonth == m && (selectedYear ?: currentYear) == viewingYear
-                    DropdownMenuItem(
-                        text = {
-                            val mm = String.format("%02d", m)
-                            val aa = String.format("%02d", viewingYear % 100)
-                            Text(
-                                text = "$name ($mm/$aa)",
-                                fontWeight = if (isCurrentSelected) FontWeight.Bold else FontWeight.Normal,
-                                color = if (isCurrentSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
-                            )
+            // Selector de mes y año en formato mm/aa con desplegable
+            Box {
+                val isMonthActive = selectedMonth != null
+                val activeYear = selectedYear ?: currentYear
+                val monthLabel = if (selectedMonth != null) {
+                    val mm = String.format("%02d", selectedMonth)
+                    val aa = String.format("%02d", activeYear % 100)
+                    "$mm/$aa"
+                } else {
+                    "Mes"
+                }
+
+                Surface(
+                    modifier = Modifier
+                        .height(32.dp)
+                        .defaultMinSize(minWidth = 66.dp)
+                        .clickable {
+                            viewingYear = selectedYear ?: currentYear
+                            monthMenuExpanded = true
                         },
-                        onClick = {
-                            monthMenuExpanded = false
-                            onMonthSelected(m, viewingYear)
+                    shape = RoundedCornerShape(8.dp),
+                    color = if (isMonthActive) {
+                        MaterialTheme.colorScheme.primaryContainer
+                    } else {
+                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                    },
+                    border = if (isMonthActive) {
+                        androidx.compose.foundation.BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary)
+                    } else {
+                        androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+                    }
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Text(
+                            text = monthLabel,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = if (isMonthActive) FontWeight.Bold else FontWeight.Medium,
+                            color = if (isMonthActive) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.width(2.dp))
+                        if (isMonthActive) {
+                            IconButton(
+                                onClick = { onMonthSelected(null, null) },
+                                modifier = Modifier.size(16.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.Close,
+                                    contentDescription = "Limpiar mes",
+                                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    modifier = Modifier.size(12.dp)
+                                )
+                            }
+                        } else {
+                            Icon(
+                                Icons.Default.ArrowDropDown,
+                                contentDescription = "Desplegar meses",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(15.dp)
+                            )
                         }
+                    }
+                }
+
+                DropdownMenu(
+                    expanded = monthMenuExpanded,
+                    onDismissRequest = { monthMenuExpanded = false }
+                ) {
+                    // Selector de año en la cabecera del desplegable
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        IconButton(
+                            onClick = { viewingYear -= 1 },
+                            modifier = Modifier.size(30.dp)
+                        ) {
+                            Text(
+                                text = "▲",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+
+                        Text(
+                            text = "$viewingYear",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+
+                        IconButton(
+                            onClick = { viewingYear += 1 },
+                            modifier = Modifier.size(30.dp)
+                        ) {
+                            Text(
+                                text = "▼",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+
+                    HorizontalDivider(
+                        modifier = Modifier.padding(vertical = 4.dp),
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
                     )
+
+                    monthNamesFull.forEachIndexed { index, name ->
+                        val m = index + 1
+                        val isCurrentSelected = selectedMonth == m && (selectedYear ?: currentYear) == viewingYear
+                        DropdownMenuItem(
+                            text = {
+                                val mm = String.format("%02d", m)
+                                val aa = String.format("%02d", viewingYear % 100)
+                                Text(
+                                    text = "$name ($mm/$aa)",
+                                    fontWeight = if (isCurrentSelected) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (isCurrentSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                )
+                            },
+                            onClick = {
+                                monthMenuExpanded = false
+                                onMonthSelected(m, viewingYear)
+                            }
+                        )
+                    }
                 }
             }
-        }
 
-        // Triángulo sólido descendente (▼) para ir al mes siguiente
-        IconButton(
-            onClick = onNextMonth,
-            modifier = Modifier.size(28.dp)
-        ) {
-            Text(
-                text = "▼",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary
-            )
+            // Triángulo sólido descendente (▼) para ir al mes siguiente
+            IconButton(
+                onClick = onNextMonth,
+                modifier = Modifier.size(24.dp)
+            ) {
+                Text(
+                    text = "▼",
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
         }
 
         // Botón rápido para limpiar filtros si alguno está activo
