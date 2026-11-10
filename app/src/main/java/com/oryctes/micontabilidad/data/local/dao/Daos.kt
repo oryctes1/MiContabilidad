@@ -52,7 +52,11 @@ interface TransactionDao {
         WHERE (:accountId IS NULL OR accountId = :accountId)
           AND (:startDate IS NULL OR operationDate >= :startDate)
           AND (:endDate IS NULL OR operationDate <= :endDate)
-          AND (:searchQuery IS NULL OR concept LIKE '%' || :searchQuery || '%')
+          AND (
+              :searchQuery IS NULL 
+              OR concept LIKE '%' || :searchQuery || '%'
+              OR amount LIKE '%' || :searchQuery || '%'
+          )
           AND reviewStatus != 'DISCARDED'
         ORDER BY operationDate DESC, id DESC
     """)

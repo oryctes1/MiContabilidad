@@ -39,7 +39,8 @@ class TransactionRepositoryImpl(
         searchQuery: String?
     ): Flow<List<Transaction>> {
         val query = if (searchQuery.isNullOrBlank()) null else searchQuery.trim()
-        return transactionDao.getFilteredTransactionsFlow(accountId, startDate, endDate, query)
+        val normalizedQuery = query?.replace(',', '.')
+        return transactionDao.getFilteredTransactionsFlow(accountId, startDate, endDate, normalizedQuery)
             .map { list ->
                 val domainList = list.map { it.toDomain() }
                 com.oryctes.micontabilidad.domain.util.TransactionChronologyHelper.sortForDisplay(domainList)

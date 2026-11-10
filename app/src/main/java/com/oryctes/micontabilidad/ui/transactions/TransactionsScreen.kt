@@ -173,7 +173,7 @@ fun TransactionsScreen(
                     searchTextValue = newValue
                     viewModel.onSearchQueryChange(newValue.text)
                 },
-                placeholder = { Text("Buscar por concepto...", style = MaterialTheme.typography.bodySmall) },
+                placeholder = { Text("Buscar por concepto o cuantía...", style = MaterialTheme.typography.bodySmall) },
                 textStyle = MaterialTheme.typography.bodySmall,
                 leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(18.dp)) },
                 trailingIcon = {

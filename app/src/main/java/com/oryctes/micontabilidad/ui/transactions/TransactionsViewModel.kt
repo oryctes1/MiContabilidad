@@ -142,12 +142,22 @@ class TransactionsViewModel(
             filteredByType
         }
 
-        // Filtrar de forma estricta por rango de fechas (Desde / Hasta), cuenta y texto de búsqueda
+        // Filtrar de forma estricta por rango de fechas (Desde / Hasta), cuenta y texto de búsqueda (por concepto o por cuantía)
         val finalTxs = filteredByReview.filter { tx ->
             val matchesAccount = filter.selectedAccountId == null || tx.accountId == filter.selectedAccountId
             val afterStart = filter.startDate == null || !tx.operationDate.isBefore(filter.startDate)
             val beforeEnd = filter.endDate == null || !tx.operationDate.isAfter(filter.endDate)
-            val matchesSearch = filter.searchQuery.isBlank() || tx.concept.contains(filter.searchQuery.trim(), ignoreCase = true)
+            val matchesSearch = if (filter.searchQuery.isBlank()) {
+                true
+            } else {
+                val q = filter.searchQuery.trim()
+                val qNormalized = q.replace(',', '.')
+                val amountStr = tx.amount.toPlainString()
+                val absAmountStr = tx.amount.abs().toPlainString()
+                tx.concept.contains(q, ignoreCase = true) ||
+                        amountStr.contains(qNormalized) ||
+                        absAmountStr.contains(qNormalized)
+            }
             matchesAccount && afterStart && beforeEnd && matchesSearch
         }
 
