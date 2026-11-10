@@ -303,21 +303,67 @@ class TransactionsViewModel(
             val txsBefore = eligibleChronologicalTxs.filter { it.operationDate.isBefore(monthStart) }
             val txsUpTo = eligibleChronologicalTxs.filter { !it.operationDate.isAfter(monthEnd) }
 
+            val depositAccounts = accounts.filter { it.type == AccountType.DEPOSIT }
+
             val startBal = if (filter.selectedAccountId != null) {
-                txsBefore.lastOrNull()?.balance
+                val acc = accounts.find { it.id == filter.selectedAccountId }
+                if (acc?.type == AccountType.DEPOSIT) {
+                    val isActive = (acc.startDate == null || !monthStart.isBefore(acc.startDate)) &&
+                            (acc.endDate == null || !monthStart.isAfter(acc.endDate))
+                    if (isActive) acc.initialAmount else null
+                } else {
+                    txsBefore.lastOrNull()?.balance
+                }
             } else {
-                if (txsBefore.isEmpty()) null else {
+                val regularSum = if (txsBefore.isEmpty()) null else {
                     val latestByAccount = txsBefore.groupBy { it.accountId }
                     latestByAccount.values.mapNotNull { it.last().balance }.fold(BigDecimal.ZERO) { acc, b -> acc.add(b) }
+                }
+
+                val activeDepositsTotal = depositAccounts
+                    .filter { dep ->
+                        val startOk = dep.startDate == null || !monthStart.isBefore(dep.startDate)
+                        val endOk = dep.endDate == null || !monthStart.isAfter(dep.endDate)
+                        startOk && endOk
+                    }
+                    .mapNotNull { it.initialAmount }
+                    .fold(BigDecimal.ZERO) { acc, amt -> acc.add(amt) }
+
+                if (regularSum != null || activeDepositsTotal > BigDecimal.ZERO) {
+                    (regularSum ?: BigDecimal.ZERO).add(activeDepositsTotal)
+                } else {
+                    null
                 }
             }
 
             val endBal = if (filter.selectedAccountId != null) {
-                txsUpTo.lastOrNull()?.balance
+                val acc = accounts.find { it.id == filter.selectedAccountId }
+                if (acc?.type == AccountType.DEPOSIT) {
+                    val isActive = (acc.startDate == null || !monthEnd.isBefore(acc.startDate)) &&
+                            (acc.endDate == null || !monthEnd.isAfter(acc.endDate))
+                    if (isActive) acc.initialAmount else null
+                } else {
+                    txsUpTo.lastOrNull()?.balance
+                }
             } else {
-                if (txsUpTo.isEmpty()) null else {
+                val regularSum = if (txsUpTo.isEmpty()) null else {
                     val latestByAccount = txsUpTo.groupBy { it.accountId }
                     latestByAccount.values.mapNotNull { it.last().balance }.fold(BigDecimal.ZERO) { acc, b -> acc.add(b) }
+                }
+
+                val activeDepositsTotal = depositAccounts
+                    .filter { dep ->
+                        val startOk = dep.startDate == null || !monthEnd.isBefore(dep.startDate)
+                        val endOk = dep.endDate == null || !monthEnd.isAfter(dep.endDate)
+                        startOk && endOk
+                    }
+                    .mapNotNull { it.initialAmount }
+                    .fold(BigDecimal.ZERO) { acc, amt -> acc.add(amt) }
+
+                if (regularSum != null || activeDepositsTotal > BigDecimal.ZERO) {
+                    (regularSum ?: BigDecimal.ZERO).add(activeDepositsTotal)
+                } else {
+                    null
                 }
             }
 
