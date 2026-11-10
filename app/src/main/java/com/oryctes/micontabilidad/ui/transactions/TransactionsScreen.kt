@@ -18,12 +18,15 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.AccountBalance
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
@@ -309,14 +312,16 @@ fun TransactionsScreen(
                 }
             }
 
-            // Selector de periodos por fecha (Desde / Hasta independientes)
+            // Selector de periodos por fecha y selector de mes completo
             DatePeriodFilterRow(
                 startDate = uiState.filterState.startDate,
                 endDate = uiState.filterState.endDate,
+                selectedMonth = uiState.filterState.selectedMonth,
                 earliestHistoricalDate = uiState.earliestHistoricalDate,
                 latestHistoricalDate = uiState.latestHistoricalDate,
                 onStartDateSelected = { viewModel.onStartDateChange(it) },
                 onEndDateSelected = { viewModel.onEndDateChange(it) },
+                onMonthSelected = { viewModel.onMonthSelect(it) },
                 onClearAllDates = { viewModel.clearDateFilter() }
             )
 
@@ -341,7 +346,24 @@ fun TransactionsScreen(
                         .padding(horizontal = 16.dp, vertical = 2.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    items(uiState.transactions, key = { it.id }) { tx ->
+                    val monthBal = uiState.monthBalanceInfo
+                    val txCount = uiState.transactions.size
+
+                    // Si hay un solo movimiento y hay información de mes, mostramos el saldo antes del movimiento
+                    if (monthBal != null && txCount <= 1) {
+                        item(key = "month_balance_info_card") {
+                            MonthBalanceCard(monthBal = monthBal)
+                        }
+                    }
+
+                    itemsIndexed(uiState.transactions, key = { _, tx -> tx.id }) { index, tx ->
+                        // Si hay más de un movimiento y este es el último (index == txCount - 1),
+                        // colocamos el saldo del mes inmediatamente ANTES de este último movimiento
+                        if (monthBal != null && txCount > 1 && index == txCount - 1) {
+                            MonthBalanceCard(monthBal = monthBal)
+                            Spacer(modifier = Modifier.height(4.dp))
+                        }
+
                         val categoryName = tx.categoryId?.let { categoryMap[it]?.name }
                         TransactionItemCard(
                             transaction = tx,
@@ -1413,18 +1435,87 @@ fun DetailRow(label: String, value: String) {
 }
 
 @Composable
+fun MonthBalanceCard(
+    monthBal: MonthBalanceInfo,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
+        ),
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            // Saldo Inicio
+            Column(horizontalAlignment = Alignment.Start) {
+                Text(
+                    text = "Saldo inicio (${monthBal.monthName})",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+                )
+                Text(
+                    text = monthBal.startBalance?.let { "${it.toPlainString()} ${monthBal.currency}" } ?: "---",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+            }
+
+            Icon(
+                Icons.AutoMirrored.Filled.ArrowForward,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(16.dp)
+            )
+
+            // Saldo Fin
+            Column(horizontalAlignment = Alignment.End) {
+                Text(
+                    text = "Saldo fin (${monthBal.monthName})",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+                )
+                Text(
+                    text = monthBal.endBalance?.let { "${it.toPlainString()} ${monthBal.currency}" } ?: "---",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+            }
+        }
+    }
+}
+
+@Composable
 fun DatePeriodFilterRow(
     startDate: LocalDate?,
     endDate: LocalDate?,
+    selectedMonth: Int?,
     earliestHistoricalDate: LocalDate?,
     latestHistoricalDate: LocalDate?,
     onStartDateSelected: (LocalDate?) -> Unit,
     onEndDateSelected: (LocalDate?) -> Unit,
+    onMonthSelected: (Int?) -> Unit,
     onClearAllDates: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     val dateFormatter = remember { DateTimeFormatter.ofPattern("dd/MM/yy") }
+    var monthMenuExpanded by remember { mutableStateOf(false) }
+
+    val monthNamesShort = remember {
+        listOf("Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic")
+    }
+    val monthNamesFull = remember {
+        listOf("Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre")
+    }
 
     fun pickStartDate() {
         val initial = startDate ?: earliestHistoricalDate ?: LocalDate.now()
@@ -1483,17 +1574,100 @@ fun DatePeriodFilterRow(
             modifier = Modifier.weight(1f)
         )
 
-        // Botón rápido para limpiar ambos extremos si alguno está activo
-        if (startDate != null || endDate != null) {
+        // Selector desplegable de mes completo del año en curso
+        Box {
+            val isMonthActive = selectedMonth != null
+            val monthLabel = if (selectedMonth != null) {
+                monthNamesShort.getOrElse(selectedMonth - 1) { "Mes $selectedMonth" }
+            } else {
+                "Mes"
+            }
+
+            Surface(
+                modifier = Modifier
+                    .height(32.dp)
+                    .clickable { monthMenuExpanded = true },
+                shape = RoundedCornerShape(8.dp),
+                color = if (isMonthActive) {
+                    MaterialTheme.colorScheme.primaryContainer
+                } else {
+                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                },
+                border = if (isMonthActive) {
+                    androidx.compose.foundation.BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary)
+                } else {
+                    androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+                }
+            ) {
+                Row(
+                    modifier = Modifier
+                        .padding(start = 6.dp, end = if (isMonthActive) 2.dp else 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Text(
+                        text = monthLabel,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = if (isMonthActive) FontWeight.Bold else FontWeight.Medium,
+                        color = if (isMonthActive) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    if (isMonthActive) {
+                        IconButton(
+                            onClick = { onMonthSelected(null) },
+                            modifier = Modifier.size(18.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Close,
+                                contentDescription = "Limpiar mes",
+                                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                modifier = Modifier.size(13.dp)
+                            )
+                        }
+                    } else {
+                        Icon(
+                            Icons.Default.ArrowDropDown,
+                            contentDescription = "Desplegar meses",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
+            }
+
+            DropdownMenu(
+                expanded = monthMenuExpanded,
+                onDismissRequest = { monthMenuExpanded = false }
+            ) {
+                monthNamesFull.forEachIndexed { index, name ->
+                    val m = index + 1
+                    DropdownMenuItem(
+                        text = {
+                            Text(
+                                text = name,
+                                fontWeight = if (selectedMonth == m) FontWeight.Bold else FontWeight.Normal,
+                                color = if (selectedMonth == m) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                            )
+                        },
+                        onClick = {
+                            monthMenuExpanded = false
+                            onMonthSelected(m)
+                        }
+                    )
+                }
+            }
+        }
+
+        // Botón rápido para limpiar filtros si alguno está activo
+        if (startDate != null || endDate != null || selectedMonth != null) {
             IconButton(
                 onClick = onClearAllDates,
-                modifier = Modifier.size(36.dp)
+                modifier = Modifier.size(32.dp)
             ) {
                 Icon(
                     Icons.Default.Close,
                     contentDescription = "Limpiar rango de fechas",
                     tint = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.size(18.dp)
+                    modifier = Modifier.size(16.dp)
                 )
             }
         }

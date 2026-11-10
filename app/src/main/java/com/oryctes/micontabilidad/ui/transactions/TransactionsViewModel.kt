@@ -31,11 +31,20 @@ enum class TransactionTypeFilter(val title: String) {
     PENDING_REVIEW("Por revisar")
 }
 
+data class MonthBalanceInfo(
+    val monthName: String,
+    val year: Int,
+    val startBalance: BigDecimal?,
+    val endBalance: BigDecimal?,
+    val currency: String = "EUR"
+)
+
 data class TransactionsFilterState(
     val selectedAccountId: Long? = null,
     val selectedCategoryId: Long? = null,
     val startDate: LocalDate? = null,
     val endDate: LocalDate? = null,
+    val selectedMonth: Int? = null, // 1..12 si se filtra por mes completo del año en curso
     val searchQuery: String = "",
     val typeFilter: TransactionTypeFilter = TransactionTypeFilter.ALL,
     val onlyPendingReview: Boolean = false
@@ -73,7 +82,8 @@ data class TransactionsUiState(
     val selectedTransaction: Transaction? = null,
     val summary: TransactionsSummaryState = TransactionsSummaryState(),
     val earliestHistoricalDate: LocalDate? = null,
-    val latestHistoricalDate: LocalDate? = null
+    val latestHistoricalDate: LocalDate? = null,
+    val monthBalanceInfo: MonthBalanceInfo? = null
 )
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -273,6 +283,54 @@ class TransactionsViewModel(
             contextSubtitle = contextSubtitle
         )
 
+        val monthBalanceInfo = if (filter.selectedMonth != null) {
+            val currentYear = LocalDate.now().year
+            val ym = java.time.YearMonth.of(currentYear, filter.selectedMonth)
+            val monthStart = ym.atDay(1)
+            val monthEnd = ym.atEndOfMonth()
+            val monthNames = listOf(
+                "enero", "febrero", "marzo", "abril", "mayo", "junio",
+                "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"
+            )
+            val monthName = monthNames.getOrElse(filter.selectedMonth - 1) { "mes ${filter.selectedMonth}" }
+
+            val eligibleChronologicalTxs = allTxs
+                .filter { it.balance != null && (filter.selectedAccountId == null || it.accountId == filter.selectedAccountId) }
+                .groupBy { it.accountId }
+                .flatMap { (_, accTxs) -> com.oryctes.micontabilidad.domain.util.TransactionChronologyHelper.sortChronologically(accTxs) }
+                .sortedBy { it.operationDate }
+
+            val txsBefore = eligibleChronologicalTxs.filter { it.operationDate.isBefore(monthStart) }
+            val txsUpTo = eligibleChronologicalTxs.filter { !it.operationDate.isAfter(monthEnd) }
+
+            val startBal = if (filter.selectedAccountId != null) {
+                txsBefore.lastOrNull()?.balance
+            } else {
+                if (txsBefore.isEmpty()) null else {
+                    val latestByAccount = txsBefore.groupBy { it.accountId }
+                    latestByAccount.values.mapNotNull { it.last().balance }.fold(BigDecimal.ZERO) { acc, b -> acc.add(b) }
+                }
+            }
+
+            val endBal = if (filter.selectedAccountId != null) {
+                txsUpTo.lastOrNull()?.balance
+            } else {
+                if (txsUpTo.isEmpty()) null else {
+                    val latestByAccount = txsUpTo.groupBy { it.accountId }
+                    latestByAccount.values.mapNotNull { it.last().balance }.fold(BigDecimal.ZERO) { acc, b -> acc.add(b) }
+                }
+            }
+
+            val currency = selectedAccount?.currency ?: "EUR"
+            MonthBalanceInfo(
+                monthName = monthName,
+                year = currentYear,
+                startBalance = startBal,
+                endBalance = endBal,
+                currency = currency
+            )
+        } else null
+
         TransactionsUiState(
             transactions = finalTxs,
             accounts = sortedAccounts,
@@ -281,7 +339,8 @@ class TransactionsViewModel(
             selectedTransaction = selected,
             summary = summary,
             earliestHistoricalDate = earliestHistoricalDate,
-            latestHistoricalDate = latestHistoricalDate
+            latestHistoricalDate = latestHistoricalDate,
+            monthBalanceInfo = monthBalanceInfo
         )
     }.stateIn(
         scope = viewModelScope,
@@ -297,11 +356,25 @@ class TransactionsViewModel(
     }
 
     fun onAccountFilterChange(accountId: Long?) {
-        _filterState.value = _filterState.value.copy(
-            selectedAccountId = accountId,
-            startDate = null,
-            endDate = null
-        )
+        val currentMonth = _filterState.value.selectedMonth
+        if (currentMonth != null) {
+            // El selector de mes completo no se borra al cambiar de cuenta
+            val currentYear = LocalDate.now().year
+            val ym = java.time.YearMonth.of(currentYear, currentMonth)
+            _filterState.value = _filterState.value.copy(
+                selectedAccountId = accountId,
+                startDate = ym.atDay(1),
+                endDate = ym.atEndOfMonth(),
+                selectedMonth = currentMonth
+            )
+        } else {
+            _filterState.value = _filterState.value.copy(
+                selectedAccountId = accountId,
+                startDate = null,
+                endDate = null,
+                selectedMonth = null
+            )
+        }
     }
 
     fun onCategoryFilterChange(categoryId: Long?) {
@@ -338,23 +411,37 @@ class TransactionsViewModel(
     }
 
     fun onDateRangeChange(start: LocalDate?, end: LocalDate?) {
-        _filterState.value = _filterState.value.copy(startDate = start, endDate = end)
+        _filterState.value = _filterState.value.copy(startDate = start, endDate = end, selectedMonth = null)
     }
 
     fun onStartDateChange(start: LocalDate?) {
         val currentEnd = _filterState.value.endDate
         val adjustedEnd = if (start != null && currentEnd != null && start.isAfter(currentEnd)) start else currentEnd
-        _filterState.value = _filterState.value.copy(startDate = start, endDate = adjustedEnd)
+        _filterState.value = _filterState.value.copy(startDate = start, endDate = adjustedEnd, selectedMonth = null)
     }
 
     fun onEndDateChange(end: LocalDate?) {
         val currentStart = _filterState.value.startDate
         val adjustedStart = if (end != null && currentStart != null && end.isBefore(currentStart)) end else currentStart
-        _filterState.value = _filterState.value.copy(startDate = adjustedStart, endDate = end)
+        _filterState.value = _filterState.value.copy(startDate = adjustedStart, endDate = end, selectedMonth = null)
+    }
+
+    fun onMonthSelect(month: Int?) {
+        if (month == null) {
+            _filterState.value = _filterState.value.copy(startDate = null, endDate = null, selectedMonth = null)
+        } else {
+            val currentYear = LocalDate.now().year
+            val ym = java.time.YearMonth.of(currentYear, month)
+            _filterState.value = _filterState.value.copy(
+                startDate = ym.atDay(1),
+                endDate = ym.atEndOfMonth(),
+                selectedMonth = month
+            )
+        }
     }
 
     fun clearDateFilter() {
-        _filterState.value = _filterState.value.copy(startDate = null, endDate = null)
+        _filterState.value = _filterState.value.copy(startDate = null, endDate = null, selectedMonth = null)
     }
 
     fun selectTransaction(tx: Transaction?) {
