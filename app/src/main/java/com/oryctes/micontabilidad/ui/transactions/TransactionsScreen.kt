@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -333,6 +334,14 @@ fun TransactionsScreen(
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp)
             )
 
+            // Tarjeta fija con los saldos de inicio y fin de mes si hay filtro de mes activo
+            uiState.monthBalanceInfo?.let { monthBal ->
+                MonthBalanceCard(
+                    monthBal = monthBal,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp)
+                )
+            }
+
             // Lista de movimientos o Estado vacío
             if (uiState.transactions.isEmpty()) {
                 EmptyState(
@@ -346,24 +355,7 @@ fun TransactionsScreen(
                         .padding(horizontal = 16.dp, vertical = 2.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    val monthBal = uiState.monthBalanceInfo
-                    val txCount = uiState.transactions.size
-
-                    // Si hay un solo movimiento y hay información de mes, mostramos el saldo antes del movimiento
-                    if (monthBal != null && txCount <= 1) {
-                        item(key = "month_balance_info_card") {
-                            MonthBalanceCard(monthBal = monthBal)
-                        }
-                    }
-
-                    itemsIndexed(uiState.transactions, key = { _, tx -> tx.id }) { index, tx ->
-                        // Si hay más de un movimiento y este es el último (index == txCount - 1),
-                        // colocamos el saldo del mes inmediatamente ANTES de este último movimiento
-                        if (monthBal != null && txCount > 1 && index == txCount - 1) {
-                            MonthBalanceCard(monthBal = monthBal)
-                            Spacer(modifier = Modifier.height(4.dp))
-                        }
-
+                    items(uiState.transactions, key = { it.id }) { tx ->
                         val categoryName = tx.categoryId?.let { categoryMap[it]?.name }
                         TransactionItemCard(
                             transaction = tx,
@@ -1550,9 +1542,9 @@ fun DatePeriodFilterRow(
         horizontalArrangement = Arrangement.spacedBy(4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Botón activable "Desde"
+        // Botón activable "From"
         DateFilterChip(
-            labelPrefix = "Desde",
+            labelPrefix = "From",
             selectedDate = startDate,
             defaultSuggestedDate = earliestHistoricalDate,
             defaultLabel = "Primer apunte",
@@ -1562,9 +1554,9 @@ fun DatePeriodFilterRow(
             modifier = Modifier.weight(1f)
         )
 
-        // Botón activable "Hasta"
+        // Botón activable "To"
         DateFilterChip(
-            labelPrefix = "Hasta",
+            labelPrefix = "To",
             selectedDate = endDate,
             defaultSuggestedDate = latestHistoricalDate ?: LocalDate.now(),
             defaultLabel = "Hoy / Último",
@@ -1574,7 +1566,7 @@ fun DatePeriodFilterRow(
             modifier = Modifier.weight(1f)
         )
 
-        // Selector desplegable de mes completo del año en curso
+        // Selector desplegable de mes completo del año en curso (algo más ancho)
         Box {
             val isMonthActive = selectedMonth != null
             val monthLabel = if (selectedMonth != null) {
@@ -1586,6 +1578,7 @@ fun DatePeriodFilterRow(
             Surface(
                 modifier = Modifier
                     .height(32.dp)
+                    .defaultMinSize(minWidth = 72.dp)
                     .clickable { monthMenuExpanded = true },
                 shape = RoundedCornerShape(8.dp),
                 color = if (isMonthActive) {
@@ -1601,7 +1594,7 @@ fun DatePeriodFilterRow(
             ) {
                 Row(
                     modifier = Modifier
-                        .padding(start = 6.dp, end = if (isMonthActive) 2.dp else 4.dp),
+                        .padding(horizontal = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.Center
                 ) {
@@ -1611,6 +1604,7 @@ fun DatePeriodFilterRow(
                         fontWeight = if (isMonthActive) FontWeight.Bold else FontWeight.Medium,
                         color = if (isMonthActive) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                    Spacer(modifier = Modifier.width(2.dp))
                     if (isMonthActive) {
                         IconButton(
                             onClick = { onMonthSelected(null) },
