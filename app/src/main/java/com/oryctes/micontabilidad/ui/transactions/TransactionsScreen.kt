@@ -1463,12 +1463,32 @@ fun MonthBalanceCard(
                 )
             }
 
-            Icon(
-                Icons.AutoMirrored.Filled.ArrowForward,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(16.dp)
-            )
+            // Centro: Flecha y diferencia de saldo
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Icon(
+                    Icons.AutoMirrored.Filled.ArrowForward,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(16.dp)
+                )
+
+                val diff = if (monthBal.startBalance != null && monthBal.endBalance != null) {
+                    monthBal.endBalance.subtract(monthBal.startBalance)
+                } else null
+
+                if (diff != null) {
+                    val isPos = diff >= BigDecimal.ZERO
+                    val sign = if (isPos) "+" else ""
+                    Text(
+                        text = "$sign${diff.toPlainString()} ${monthBal.currency}",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = if (isPos) IncomeGreen else ExpenseRed
+                    )
+                }
+            }
 
             // Saldo Fin
             Column(horizontalAlignment = Alignment.End) {
