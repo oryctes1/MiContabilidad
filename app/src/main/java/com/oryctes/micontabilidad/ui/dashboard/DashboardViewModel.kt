@@ -28,7 +28,8 @@ data class DashboardUiState(
     val monthlyHistory: List<MonthlySummary> = emptyList(),
     val totalBalance: BigDecimal = BigDecimal.ZERO,
     val totalInvestments: BigDecimal = BigDecimal.ZERO,
-    val investmentAccounts: List<AccountWithBalance> = emptyList()
+    val investmentAccounts: List<AccountWithBalance> = emptyList(),
+    val hasOutdatedStatementsForInvestments: Boolean = false
 )
 
 class DashboardViewModel(
@@ -66,6 +67,18 @@ class DashboardViewModel(
         val balanceSum = accountsWithBalance.mapNotNull { it.lastBalance }
             .fold(BigDecimal.ZERO) { acc, b -> acc.add(b) }
 
+        // Detección de extractos desactualizados tras últimas inversiones:
+        // Si hay depósitos o inversiones activos abiertos con fecha posterior al último apunte registrado en los extractos,
+        // su importe podría estar duplicado en el saldo de las cuentas corrientes/ahorro y en el del depósito.
+        val latestStatementTxDate = allTxs
+            .filter { it.reviewStatus != com.oryctes.micontabilidad.domain.model.ReviewStatus.DISCARDED && it.balance != null }
+            .maxOfOrNull { it.operationDate }
+
+        val hasOutdatedStatements = latestStatementTxDate != null && investmentAccounts.any { inv ->
+            val startDate = inv.account.startDate
+            startDate != null && startDate.isAfter(latestStatementTxDate)
+        }
+
         DashboardUiState(
             isLoading = false,
             accounts = accountsWithBalance,
@@ -74,7 +87,8 @@ class DashboardViewModel(
             monthlyHistory = summaries,
             totalBalance = balanceSum,
             totalInvestments = totalInvestments,
-            investmentAccounts = investmentAccounts
+            investmentAccounts = investmentAccounts,
+            hasOutdatedStatementsForInvestments = hasOutdatedStatements
         )
     }.stateIn(
         scope = viewModelScope,

@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -22,6 +23,8 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CreditCard
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.UploadFile
+import androidx.compose.material.icons.filled.Warning
+import com.oryctes.micontabilidad.ui.theme.WarningOrange
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -128,6 +131,30 @@ fun DashboardScreen(
                                 .clickable { showInvestmentsDialog = true }
                                 .padding(vertical = 2.dp)
                         )
+
+                        if (uiState.hasOutdatedStatementsForInvestments) {
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 2.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.Warning,
+                                    contentDescription = null,
+                                    tint = WarningOrange,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "¡Atención: extractos no actualizados tras últimas inversiones!",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = WarningOrange
+                                )
+                            }
+                        }
 
                         Spacer(modifier = Modifier.height(16.dp))
 
