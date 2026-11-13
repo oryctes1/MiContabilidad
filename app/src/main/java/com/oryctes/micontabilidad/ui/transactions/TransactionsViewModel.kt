@@ -413,27 +413,11 @@ class TransactionsViewModel(
     }
 
     fun onAccountFilterChange(accountId: Long?) {
-        val currentMonth = _filterState.value.selectedMonth
-        val currentYear = _filterState.value.selectedYear ?: LocalDate.now().year
-        if (currentMonth != null) {
-            // El selector de mes completo no se borra al cambiar de cuenta
-            val ym = java.time.YearMonth.of(currentYear, currentMonth)
-            _filterState.value = _filterState.value.copy(
-                selectedAccountId = accountId,
-                startDate = ym.atDay(1),
-                endDate = ym.atEndOfMonth(),
-                selectedMonth = currentMonth,
-                selectedYear = currentYear
-            )
-        } else {
-            _filterState.value = _filterState.value.copy(
-                selectedAccountId = accountId,
-                startDate = null,
-                endDate = null,
-                selectedMonth = null,
-                selectedYear = null
-            )
-        }
+        // Al cambiar de cuenta se conserva cualquier filtro de fechas activo (rango personalizado o mes),
+        // anulándose únicamente si el usuario pulsa en la 'X' para borrarlo.
+        _filterState.value = _filterState.value.copy(
+            selectedAccountId = accountId
+        )
     }
 
     fun onCategoryFilterChange(categoryId: Long?) {
