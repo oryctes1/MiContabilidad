@@ -41,54 +41,100 @@ class DashboardViewModel(
     private val currentYearMonth = YearMonth.now()
 
     val uiState: StateFlow<DashboardUiState> = combine(
-        accountRepository.getActiveAccounts(),
+        accountRepository.getAllAccounts(),
         transactionRepository.getFilteredTransactions(null, null, null, null),
         transactionRepository.getMonthlySummaries(null, currentYear)
-    ) { accounts, allTxs, summaries ->
+    ) { allAccounts, allTxs, summaries ->
         val currentMonth = summaries.find { it.yearMonth == currentYearMonth }
         val recent = allTxs.take(5)
 
         val today = LocalDate.now()
-        // Cuentas activas: no archivadas y depósitos no vencidos por fecha
-        val activeAccounts = accounts.filter {
-            !it.isArchived && !(it.type == com.oryctes.micontabilidad.domain.model.AccountType.DEPOSIT && it.endDate != null && !it.endDate.isAfter(today))
-        }
-        val accountsWithBalance = activeAccounts.map { it.withBalance(allTxs) }.sortedForDisplay()
 
-        // Inversiones: depósitos y cuentas de inversión activas
-        val investmentAccounts = accountsWithBalance.filter {
-            it.account.type == com.oryctes.micontabilidad.domain.model.AccountType.DEPOSIT ||
-            it.account.type == com.oryctes.micontabilidad.domain.model.AccountType.INVESTMENT
+        // 1. Cuentas bancarias regulares activas (corriente, ahorro, etc.)
+        val activeRegularAccounts = allAccounts.filter {
+            !it.isArchived && it.type != com.oryctes.micontabilidad.domain.model.AccountType.DEPOSIT &&
+                    it.type != com.oryctes.micontabilidad.domain.model.AccountType.INVESTMENT
         }
-        val totalInvestments = investmentAccounts.mapNotNull { it.lastBalance }
+        val regularWithBalance = activeRegularAccounts.map { it.withBalance(allTxs) }.sortedForDisplay()
+        val regularBalanceSum = regularWithBalance.mapNotNull { it.lastBalance }
             .fold(BigDecimal.ZERO) { acc, b -> acc.add(b) }
 
-        // Saldo total estimado: cómputo de todo lo activo (incluyendo depósitos e inversiones activas)
-        val balanceSum = accountsWithBalance.mapNotNull { it.lastBalance }
+        // 2. Todos los productos de inversión (depósitos e inversiones)
+        val allInvestmentAccounts = allAccounts.filter {
+            it.type == com.oryctes.micontabilidad.domain.model.AccountType.DEPOSIT ||
+                    it.type == com.oryctes.micontabilidad.domain.model.AccountType.INVESTMENT
+        }
+
+        // Para comprobar si las retiradas o ingresos ya están en los extractos:
+        val validTxs = allTxs.filter { it.reviewStatus != com.oryctes.micontabilidad.domain.model.ReviewStatus.DISCARDED }
+
+        // Listas para clasificar las inversiones activas a computar y las alertas
+        val computedInvestments = mutableListOf<AccountWithBalance>()
+        var adjustmentToTotalBalance = BigDecimal.ZERO
+        var hasOutdatedAlert = false
+
+        for (inv in allInvestmentAccounts) {
+            val amount = inv.initialAmount ?: BigDecimal.ZERO
+            val isExpired = inv.type == com.oryctes.micontabilidad.domain.model.AccountType.DEPOSIT &&
+                    inv.endDate != null && !inv.endDate.isAfter(today)
+
+            if (isExpired) {
+                // Inversión que ha vencido:
+                // Buscamos si existe un ingreso en los extractos con el importe exacto a partir de la fecha de vencimiento
+                val hasReturnInStatements = validTxs.any { tx ->
+                    tx.amount > BigDecimal.ZERO &&
+                            tx.amount.compareTo(amount) == 0 &&
+                            (inv.endDate == null || !tx.operationDate.isBefore(inv.endDate))
+                }
+
+                if (hasReturnInStatements) {
+                    // Ya está en los extractos: ya se computa en el saldo regular disponible, NO se computa como inversión
+                } else {
+                    // No se encuentra en los extractos aún:
+                    // Sigue contabilizándose como inversión y salta la advertencia
+                    computedInvestments.add(inv.withBalance(allTxs))
+                    hasOutdatedAlert = true
+                }
+            } else {
+                // Inversión vigente / activa:
+                // Se contabiliza en la cartera de inversiones
+                computedInvestments.add(inv.withBalance(allTxs))
+
+                // Comprobamos si la retirada de apertura ya está en los extractos bancarios:
+                val hasWithdrawalInStatements = validTxs.any { tx ->
+                    tx.amount < BigDecimal.ZERO &&
+                            tx.amount.abs().compareTo(amount) == 0 &&
+                            (inv.startDate == null || !tx.operationDate.isBefore(inv.startDate.minusDays(5)))
+                }
+
+                if (!hasWithdrawalInStatements) {
+                    // Si aún no aparece la retirada en los extractos, el saldo de la cuenta bancaria de origen
+                    // aún tiene ese dinero. Se descuenta del saldo total estimado para no duplicarlo y salta aviso.
+                    adjustmentToTotalBalance = adjustmentToTotalBalance.subtract(amount)
+                    hasOutdatedAlert = true
+                }
+            }
+        }
+
+        val totalInvestments = computedInvestments.mapNotNull { it.lastBalance }
             .fold(BigDecimal.ZERO) { acc, b -> acc.add(b) }
 
-        // Detección de extractos desactualizados tras últimas inversiones:
-        // Si hay depósitos o inversiones activos abiertos con fecha posterior al último apunte registrado en los extractos,
-        // su importe podría estar duplicado en el saldo de las cuentas corrientes/ahorro y en el del depósito.
-        val latestStatementTxDate = allTxs
-            .filter { it.reviewStatus != com.oryctes.micontabilidad.domain.model.ReviewStatus.DISCARDED && it.balance != null }
-            .maxOfOrNull { it.operationDate }
+        // Saldo total estimado = Saldo en cuentas corrientes/ahorro + Inversiones computadas - Ajuste por duplicidad
+        val estimatedTotalBalance = regularBalanceSum.add(totalInvestments).add(adjustmentToTotalBalance)
 
-        val hasOutdatedStatements = latestStatementTxDate != null && investmentAccounts.any { inv ->
-            val startDate = inv.account.startDate
-            startDate != null && startDate.isAfter(latestStatementTxDate)
-        }
+        // Cuentas visibles en la lista horizontal: cuentas regulares + inversiones computadas
+        val displayAccounts = (regularWithBalance + computedInvestments).sortedForDisplay()
 
         DashboardUiState(
             isLoading = false,
-            accounts = accountsWithBalance,
+            accounts = displayAccounts,
             currentMonthSummary = currentMonth,
             recentTransactions = recent,
             monthlyHistory = summaries,
-            totalBalance = balanceSum,
+            totalBalance = estimatedTotalBalance,
             totalInvestments = totalInvestments,
-            investmentAccounts = investmentAccounts,
-            hasOutdatedStatementsForInvestments = hasOutdatedStatements
+            investmentAccounts = computedInvestments,
+            hasOutdatedStatementsForInvestments = hasOutdatedAlert
         )
     }.stateIn(
         scope = viewModelScope,
