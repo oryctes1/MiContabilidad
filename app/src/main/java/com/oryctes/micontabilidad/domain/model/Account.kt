@@ -35,7 +35,8 @@ data class AccountWithBalance(
     val account: Account,
     val lastBalance: java.math.BigDecimal? = null,
     val lastBalanceDate: java.time.LocalDate? = null,
-    val latestValuation: InvestmentValuation? = null
+    val latestValuation: InvestmentValuation? = null,
+    val totalInvestedCapital: java.math.BigDecimal? = null
 )
 
 fun Account.withBalance(
@@ -46,21 +47,47 @@ fun Account.withBalance(
         return AccountWithBalance(
             account = this,
             lastBalance = this.initialAmount,
-            lastBalanceDate = this.startDate ?: LocalDate.now()
+            lastBalanceDate = this.startDate ?: LocalDate.now(),
+            totalInvestedCapital = this.initialAmount
         )
     }
     if (this.type == AccountType.INVESTMENT) {
         val accountValuations = valuations.filter { it.accountId == this.id }
+        val initialCap = this.initialAmount ?: BigDecimal.ZERO
+        val additionalContributions = accountValuations
+            .filter { it.type == ValuationType.CONTRIBUTION }
+            .map { it.value }
+            .fold(BigDecimal.ZERO) { acc, v -> acc.add(v) }
+        val totalCap = initialCap.add(additionalContributions)
+
         if (accountValuations.isNotEmpty()) {
-            val latestVal = accountValuations.maxWithOrNull(
+            val latestItem = accountValuations.maxWithOrNull(
                 compareBy<InvestmentValuation> { it.date }.thenBy { it.id }
             )
-            if (latestVal != null) {
+            if (latestItem != null) {
+                // Si el último item es una valoración, su value es el valor total de mercado.
+                // Si el último item fuese una aportación sin valoración posterior, el saldo acumulado es totalCap.
+                val latestValuationRecord = accountValuations
+                    .filter { it.type == ValuationType.VALUATION }
+                    .maxWithOrNull(compareBy<InvestmentValuation> { it.date }.thenBy { it.id })
+
+                val currentMarketValue = if (latestValuationRecord != null) {
+                    // Valoración registrada más las aportaciones realizadas después de esa valoración
+                    val contributionsAfterVal = accountValuations
+                        .filter { it.type == ValuationType.CONTRIBUTION && (it.date.isAfter(latestValuationRecord.date) || (it.date.isEqual(latestValuationRecord.date) && it.id > latestValuationRecord.id)) }
+                        .map { it.value }
+                        .fold(BigDecimal.ZERO) { acc, v -> acc.add(v) }
+                    latestValuationRecord.value.add(contributionsAfterVal)
+                } else {
+                    totalCap
+                }
+
                 return AccountWithBalance(
                     account = this,
-                    lastBalance = latestVal.value,
-                    lastBalanceDate = latestVal.date,
-                    latestValuation = latestVal
+                    lastBalance = currentMarketValue,
+                    lastBalanceDate = latestItem.date,
+                    latestValuation = latestValuationRecord ?: latestItem,
+                    totalInvestedCapital = totalCap
                 )
             }
         }
@@ -85,13 +112,15 @@ fun Account.withBalance(
             return AccountWithBalance(
                 account = this,
                 lastBalance = latestTx.balance,
-                lastBalanceDate = latestTx.operationDate
+                lastBalanceDate = latestTx.operationDate,
+                totalInvestedCapital = totalCap
             )
         } else {
             return AccountWithBalance(
                 account = this,
-                lastBalance = this.initialAmount,
-                lastBalanceDate = this.startDate ?: LocalDate.now()
+                lastBalance = if (totalCap > BigDecimal.ZERO) totalCap else this.initialAmount,
+                lastBalanceDate = this.startDate ?: LocalDate.now(),
+                totalInvestedCapital = totalCap
             )
         }
     }

@@ -351,6 +351,7 @@ data class InvestmentValuationEntity(
     val date: LocalDate,
     val value: BigDecimal,
     val notes: String? = null,
+    val type: com.oryctes.micontabilidad.domain.model.ValuationType = com.oryctes.micontabilidad.domain.model.ValuationType.VALUATION,
     val createdAt: Long = System.currentTimeMillis()
 ) {
     fun toDomain(): com.oryctes.micontabilidad.domain.model.InvestmentValuation =
@@ -360,6 +361,7 @@ data class InvestmentValuationEntity(
             date = date,
             value = value,
             notes = notes,
+            type = type,
             createdAt = createdAt
         )
 
@@ -371,6 +373,7 @@ data class InvestmentValuationEntity(
                 date = model.date,
                 value = model.value,
                 notes = model.notes,
+                type = model.type,
                 createdAt = model.createdAt
             )
     }

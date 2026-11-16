@@ -69,7 +69,7 @@ class AccountsViewModel(
         )
 
         val totalInvested = activeInvestments
-            .mapNotNull { it.lastBalance ?: it.account.initialAmount }
+            .mapNotNull { it.totalInvestedCapital ?: it.account.initialAmount }
             .fold(java.math.BigDecimal.ZERO) { acc, b -> acc.add(b) }
 
         // Cuentas visibles en Cuentas y Tarjetas:
@@ -151,7 +151,8 @@ class AccountsViewModel(
         accountId: Long,
         date: java.time.LocalDate,
         value: java.math.BigDecimal,
-        notes: String? = null
+        notes: String? = null,
+        type: com.oryctes.micontabilidad.domain.model.ValuationType = com.oryctes.micontabilidad.domain.model.ValuationType.VALUATION
     ) {
         viewModelScope.launch {
             accountRepository.saveValuation(
@@ -160,7 +161,8 @@ class AccountsViewModel(
                     accountId = accountId,
                     date = date,
                     value = value,
-                    notes = notes?.trim()?.ifBlank { null }
+                    notes = notes?.trim()?.ifBlank { null },
+                    type = type
                 )
             )
         }

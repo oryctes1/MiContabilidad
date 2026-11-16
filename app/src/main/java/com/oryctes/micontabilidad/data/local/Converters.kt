@@ -34,4 +34,12 @@ class Converters {
     fun toReviewStatus(value: String): ReviewStatus = runCatching {
         ReviewStatus.valueOf(value)
     }.getOrDefault(ReviewStatus.CONFIRMED)
+
+    @TypeConverter
+    fun fromValuationType(value: com.oryctes.micontabilidad.domain.model.ValuationType): String = value.name
+
+    @TypeConverter
+    fun toValuationType(value: String): com.oryctes.micontabilidad.domain.model.ValuationType = runCatching {
+        com.oryctes.micontabilidad.domain.model.ValuationType.valueOf(value)
+    }.getOrDefault(com.oryctes.micontabilidad.domain.model.ValuationType.VALUATION)
 }

@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.Unarchive
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenuItem
@@ -167,13 +168,14 @@ fun AccountsScreen(
             AccountFormDialog(
                 account = accountToEdit,
                 valuations = accountToEdit?.id?.let { uiState.valuationsByAccount[it] } ?: emptyList(),
-                onAddValuation = { date, value, notes ->
+                onAddValuation = { date, value, notes, type ->
                     accountToEdit?.id?.let { accId ->
                         viewModel.saveInvestmentValuation(
                             accountId = accId,
                             date = date,
                             value = value,
-                            notes = notes
+                            notes = notes,
+                            type = type
                         )
                     }
                 },
@@ -605,11 +607,11 @@ fun AccountCard(
                     }
 
                     if (account.type == AccountType.INVESTMENT && accountWithBalance.latestValuation != null) {
-                        val initial = account.initialAmount ?: BigDecimal.ZERO
-                        val currentVal = accountWithBalance.latestValuation.value
-                        val profitLoss = currentVal.subtract(initial)
-                        val profitLossPct = if (initial > BigDecimal.ZERO) {
-                            profitLoss.multiply(BigDecimal(100)).divide(initial, 2, RoundingMode.HALF_UP)
+                        val investedCap = accountWithBalance.totalInvestedCapital ?: account.initialAmount ?: BigDecimal.ZERO
+                        val currentVal = accountWithBalance.lastBalance ?: accountWithBalance.latestValuation.value
+                        val profitLoss = currentVal.subtract(investedCap)
+                        val profitLossPct = if (investedCap > BigDecimal.ZERO) {
+                            profitLoss.multiply(BigDecimal(100)).divide(investedCap, 2, RoundingMode.HALF_UP)
                         } else null
 
                         Spacer(modifier = Modifier.height(8.dp))
@@ -643,7 +645,7 @@ fun AccountCard(
                             )
                         }
 
-                        if (initial > BigDecimal.ZERO) {
+                        if (investedCap > BigDecimal.ZERO) {
                             Spacer(modifier = Modifier.height(4.dp))
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
@@ -791,7 +793,7 @@ fun AccountCard(
 fun AccountFormDialog(
     account: Account?,
     valuations: List<com.oryctes.micontabilidad.domain.model.InvestmentValuation> = emptyList(),
-    onAddValuation: (LocalDate, BigDecimal, String?) -> Unit = { _, _, _ -> },
+    onAddValuation: (LocalDate, BigDecimal, String?, com.oryctes.micontabilidad.domain.model.ValuationType) -> Unit = { _, _, _, _ -> },
     onDeleteValuation: (Long) -> Unit = {},
     onDismiss: () -> Unit,
     onSave: (
@@ -818,6 +820,7 @@ fun AccountFormDialog(
     var valuationDateVal by remember { mutableStateOf(LocalDate.now()) }
     var valuationValueText by remember { mutableStateOf("") }
     var valuationNotesText by remember { mutableStateOf("") }
+    var valuationTypeVal by remember { mutableStateOf(com.oryctes.micontabilidad.domain.model.ValuationType.VALUATION) }
     var entity by remember { mutableStateOf(account?.entity.orEmpty()) }
     var selectedType by remember { mutableStateOf(account?.type ?: AccountType.CHECKING) }
     var currency by remember { mutableStateOf(account?.currency ?: "EUR") }
@@ -1196,11 +1199,22 @@ fun AccountFormDialog(
                                                         fontWeight = FontWeight.Bold,
                                                         style = MaterialTheme.typography.bodySmall
                                                     )
-                                                    Spacer(modifier = Modifier.width(8.dp))
+                                                    Spacer(modifier = Modifier.width(6.dp))
+                                                    SuggestionChip(
+                                                        onClick = {},
+                                                        label = {
+                                                            Text(
+                                                                text = valItem.type.displayName,
+                                                                style = MaterialTheme.typography.labelSmall
+                                                            )
+                                                        },
+                                                        modifier = Modifier.height(24.dp)
+                                                    )
+                                                    Spacer(modifier = Modifier.width(6.dp))
                                                     Text(
-                                                        text = "${valItem.value.toPlainString()} $currency",
+                                                        text = "${if (valItem.type == com.oryctes.micontabilidad.domain.model.ValuationType.CONTRIBUTION) "+" else ""}${valItem.value.toPlainString()} $currency",
                                                         fontWeight = FontWeight.SemiBold,
-                                                        color = MaterialTheme.colorScheme.primary,
+                                                        color = if (valItem.type == com.oryctes.micontabilidad.domain.model.ValuationType.CONTRIBUTION) com.oryctes.micontabilidad.ui.theme.IncomeGreen else MaterialTheme.colorScheme.primary,
                                                         style = MaterialTheme.typography.bodySmall
                                                     )
                                                 }
@@ -1308,18 +1322,44 @@ fun AccountFormDialog(
     if (showAddValuationDialog) {
         AlertDialog(
             onDismissRequest = { showAddValuationDialog = false },
-            title = { Text("Nueva Valoración") },
+            title = {
+                Text(if (valuationTypeVal == com.oryctes.micontabilidad.domain.model.ValuationType.CONTRIBUTION) "Nueva Aportación de Capital" else "Nueva Valoración de Mercado")
+            },
             text = {
                 Column(
                     modifier = Modifier.fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
+                    // Selector del tipo de registro: Valoración vs Aportación de capital
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        FilterChip(
+                            selected = valuationTypeVal == com.oryctes.micontabilidad.domain.model.ValuationType.VALUATION,
+                            onClick = { valuationTypeVal = com.oryctes.micontabilidad.domain.model.ValuationType.VALUATION },
+                            label = { Text("Valoración") },
+                            modifier = Modifier.weight(1f)
+                        )
+                        FilterChip(
+                            selected = valuationTypeVal == com.oryctes.micontabilidad.domain.model.ValuationType.CONTRIBUTION,
+                            onClick = { valuationTypeVal = com.oryctes.micontabilidad.domain.model.ValuationType.CONTRIBUTION },
+                            label = { Text("+ Aportación") },
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+
                     Box(modifier = Modifier.fillMaxWidth()) {
                         OutlinedTextField(
                             value = valuationDateVal.format(dateFormatter),
                             onValueChange = {},
                             readOnly = true,
-                            label = { Text("Fecha de valoración *", style = MaterialTheme.typography.bodySmall) },
+                            label = {
+                                Text(
+                                    if (valuationTypeVal == com.oryctes.micontabilidad.domain.model.ValuationType.CONTRIBUTION) "Fecha de aportación *" else "Fecha de valoración *",
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            },
                             trailingIcon = {
                                 IconButton(onClick = {
                                     DatePickerDialog(
@@ -1344,8 +1384,15 @@ fun AccountFormDialog(
                     OutlinedTextField(
                         value = valuationValueText,
                         onValueChange = { valuationValueText = it },
-                        label = { Text("Valor actual (€) *", style = MaterialTheme.typography.bodySmall) },
-                        placeholder = { Text("12500.50") },
+                        label = {
+                            Text(
+                                if (valuationTypeVal == com.oryctes.micontabilidad.domain.model.ValuationType.CONTRIBUTION) "Importe aportado (€) *" else "Valor total actual (€) *",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        },
+                        placeholder = {
+                            Text(if (valuationTypeVal == com.oryctes.micontabilidad.domain.model.ValuationType.CONTRIBUTION) "1800.00" else "26237.96")
+                        },
                         singleLine = true,
                         textStyle = MaterialTheme.typography.bodyMedium,
                         modifier = Modifier.fillMaxWidth()
@@ -1355,7 +1402,9 @@ fun AccountFormDialog(
                         value = valuationNotesText,
                         onValueChange = { valuationNotesText = it },
                         label = { Text("Notas / Observaciones", style = MaterialTheme.typography.bodySmall) },
-                        placeholder = { Text("ej. Cierre mensual, subida bolsa...") },
+                        placeholder = {
+                            Text(if (valuationTypeVal == com.oryctes.micontabilidad.domain.model.ValuationType.CONTRIBUTION) "ej. Aportación periódica anual" else "ej. Cierre mensual, subida bolsa...")
+                        },
                         maxLines = 2,
                         textStyle = MaterialTheme.typography.bodyMedium,
                         modifier = Modifier.fillMaxWidth()
@@ -1370,14 +1419,15 @@ fun AccountFormDialog(
                             onAddValuation(
                                 valuationDateVal,
                                 parsedVal,
-                                valuationNotesText.takeIf { it.isNotBlank() }
+                                valuationNotesText.takeIf { it.isNotBlank() },
+                                valuationTypeVal
                             )
                             showAddValuationDialog = false
                         }
                     },
                     enabled = valuationValueText.replace(',', '.').toBigDecimalOrNull() != null
                 ) {
-                    Text("Guardar Valoración")
+                    Text("Guardar")
                 }
             },
             dismissButton = {

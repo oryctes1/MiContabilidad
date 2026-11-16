@@ -531,11 +531,11 @@ fun InvestmentsDialog(
                                         }
                                     }
                                     if (item.latestValuation != null) {
-                                        val initial = acc.initialAmount ?: BigDecimal.ZERO
-                                        val currentVal = item.latestValuation.value
-                                        val profitLoss = currentVal.subtract(initial)
-                                        val profitLossPct = if (initial > BigDecimal.ZERO) {
-                                            profitLoss.multiply(BigDecimal(100)).divide(initial, 2, java.math.RoundingMode.HALF_UP)
+                                        val investedCap = item.totalInvestedCapital ?: acc.initialAmount ?: BigDecimal.ZERO
+                                        val currentVal = item.lastBalance ?: item.latestValuation.value
+                                        val profitLoss = currentVal.subtract(investedCap)
+                                        val profitLossPct = if (investedCap > BigDecimal.ZERO) {
+                                            profitLoss.multiply(BigDecimal(100)).divide(investedCap, 2, java.math.RoundingMode.HALF_UP)
                                         } else null
 
                                         Spacer(modifier = Modifier.height(4.dp))
@@ -556,7 +556,7 @@ fun InvestmentsDialog(
                                             )
                                         }
 
-                                        if (initial > BigDecimal.ZERO) {
+                                        if (investedCap > BigDecimal.ZERO) {
                                             Spacer(modifier = Modifier.height(2.dp))
                                             Row(
                                                 modifier = Modifier.fillMaxWidth(),
