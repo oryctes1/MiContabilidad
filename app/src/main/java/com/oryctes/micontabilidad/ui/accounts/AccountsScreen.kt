@@ -1,5 +1,6 @@
 package com.oryctes.micontabilidad.ui.accounts
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -63,6 +64,7 @@ import com.oryctes.micontabilidad.domain.model.Account
 import com.oryctes.micontabilidad.domain.model.AccountType
 import com.oryctes.micontabilidad.domain.model.AccountWithBalance
 import com.oryctes.micontabilidad.ui.components.EmptyState
+import com.oryctes.micontabilidad.ui.dashboard.InvestmentsDialog
 import org.koin.androidx.compose.koinViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -74,6 +76,7 @@ fun AccountsScreen(
     val uiState by viewModel.uiState.collectAsState()
     var showDialog by remember { mutableStateOf(false) }
     var showExpiredDialog by remember { mutableStateOf(false) }
+    var showInvestmentsDialog by remember { mutableStateOf(false) }
     var accountToEdit by remember { mutableStateOf<Account?>(null) }
     var accountToDelete by remember { mutableStateOf<Account?>(null) }
 
@@ -82,11 +85,27 @@ fun AccountsScreen(
             TopAppBar(
                 title = { Text("Cuentas y Tarjetas", fontWeight = FontWeight.Bold) },
                 actions = {
-                    TextButton(onClick = { showExpiredDialog = true }) {
+                    Column(
+                        horizontalAlignment = Alignment.End,
+                        modifier = Modifier.padding(end = 8.dp)
+                    ) {
                         Text(
                             text = "Productos vencidos",
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.SemiBold
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier
+                                .clickable { showExpiredDialog = true }
+                                .padding(vertical = 2.dp, horizontal = 4.dp)
+                        )
+                        Text(
+                            text = "Inversiones",
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier
+                                .clickable { showInvestmentsDialog = true }
+                                .padding(vertical = 2.dp, horizontal = 4.dp)
                         )
                     }
                 }
@@ -207,6 +226,14 @@ fun AccountsScreen(
                 onDelete = { account ->
                     accountToDelete = account
                 }
+            )
+        }
+
+        if (showInvestmentsDialog) {
+            InvestmentsDialog(
+                totalInvestments = uiState.totalInvestedAmount,
+                investmentAccounts = uiState.activeInvestments,
+                onDismiss = { showInvestmentsDialog = false }
             )
         }
     }

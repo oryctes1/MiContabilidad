@@ -18,6 +18,8 @@ import kotlinx.coroutines.launch
 data class AccountsUiState(
     val accounts: List<AccountWithBalance> = emptyList(),
     val expiredDeposits: List<AccountWithBalance> = emptyList(),
+    val activeInvestments: List<AccountWithBalance> = emptyList(),
+    val totalInvestedAmount: java.math.BigDecimal = java.math.BigDecimal.ZERO,
     val isEditing: Boolean = false,
     val selectedAccount: Account? = null
 )
@@ -51,6 +53,23 @@ class AccountsViewModel(
             ((it.account.endDate != null && !it.account.endDate.isAfter(today)) || it.account.isArchived)
         }
 
+        // Inversiones activas: depósitos no vencidos ni archivados + productos de inversión no archivados
+        val activeInvestments = allWithBalance.filter {
+            val acc = it.account
+            !acc.isArchived && (
+                (acc.type == AccountType.DEPOSIT && (acc.endDate == null || acc.endDate.isAfter(today))) ||
+                (acc.type == AccountType.INVESTMENT)
+            )
+        }.sortedWith(
+            compareBy<AccountWithBalance> { item ->
+                item.account.startDate ?: item.lastBalanceDate ?: java.time.LocalDate.MIN
+            }.thenBy { it.account.id }
+        )
+
+        val totalInvested = activeInvestments
+            .mapNotNull { it.lastBalance ?: it.account.initialAmount }
+            .fold(java.math.BigDecimal.ZERO) { acc, b -> acc.add(b) }
+
         // Cuentas visibles en Cuentas y Tarjetas:
         // Excluye los depósitos vencidos (ya sea por fecha o archivados)
         val activeAccounts = allWithBalance.filter {
@@ -63,7 +82,9 @@ class AccountsViewModel(
 
         AccountsUiState(
             accounts = sortedActive,
-            expiredDeposits = expired
+            expiredDeposits = expired,
+            activeInvestments = activeInvestments,
+            totalInvestedAmount = totalInvested
         )
     }.stateIn(
         scope = viewModelScope,
