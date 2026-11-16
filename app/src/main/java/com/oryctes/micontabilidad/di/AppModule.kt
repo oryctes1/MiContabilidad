@@ -27,12 +27,13 @@ val appModule = module {
     single { get<AppDatabase>().importBatchDao() }
     single { get<AppDatabase>().importProfileDao() }
     single { get<AppDatabase>().categoryDao() }
+    single { get<AppDatabase>().investmentValuationDao() }
 
     // Factoría de parsers
     single { ParserFactory(get()) }
 
     // Repositorios
-    single<AccountRepository> { AccountRepositoryImpl(get()) }
+    single<AccountRepository> { AccountRepositoryImpl(get(), get()) }
     single<TransactionRepository> { TransactionRepositoryImpl(get(), get(), get(), get(), get()) }
     single<ImportRepository> {
         ImportRepositoryImpl(

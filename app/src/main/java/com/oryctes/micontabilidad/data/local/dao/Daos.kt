@@ -187,3 +187,27 @@ interface CategoryDao {
     @Delete
     suspend fun deleteCategory(category: CategoryEntity)
 }
+
+@Dao
+interface InvestmentValuationDao {
+    @Query("SELECT * FROM investment_valuations ORDER BY date DESC, id DESC")
+    fun getAllValuationsFlow(): Flow<List<com.oryctes.micontabilidad.data.local.entity.InvestmentValuationEntity>>
+
+    @Query("SELECT * FROM investment_valuations WHERE accountId = :accountId ORDER BY date DESC, id DESC")
+    fun getValuationsByAccountFlow(accountId: Long): Flow<List<com.oryctes.micontabilidad.data.local.entity.InvestmentValuationEntity>>
+
+    @Query("SELECT * FROM investment_valuations WHERE accountId = :accountId ORDER BY date DESC, id DESC")
+    suspend fun getValuationsByAccount(accountId: Long): List<com.oryctes.micontabilidad.data.local.entity.InvestmentValuationEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertValuation(valuation: com.oryctes.micontabilidad.data.local.entity.InvestmentValuationEntity): Long
+
+    @Update
+    suspend fun updateValuation(valuation: com.oryctes.micontabilidad.data.local.entity.InvestmentValuationEntity)
+
+    @Delete
+    suspend fun deleteValuation(valuation: com.oryctes.micontabilidad.data.local.entity.InvestmentValuationEntity)
+
+    @Query("DELETE FROM investment_valuations WHERE id = :id")
+    suspend fun deleteValuationById(id: Long)
+}

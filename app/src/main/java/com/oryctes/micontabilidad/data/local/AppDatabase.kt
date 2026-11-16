@@ -10,12 +10,14 @@ import com.oryctes.micontabilidad.data.local.dao.AccountDao
 import com.oryctes.micontabilidad.data.local.dao.CategoryDao
 import com.oryctes.micontabilidad.data.local.dao.ImportBatchDao
 import com.oryctes.micontabilidad.data.local.dao.ImportProfileDao
+import com.oryctes.micontabilidad.data.local.dao.InvestmentValuationDao
 import com.oryctes.micontabilidad.data.local.dao.SourceFileDao
 import com.oryctes.micontabilidad.data.local.dao.TransactionDao
 import com.oryctes.micontabilidad.data.local.entity.AccountEntity
 import com.oryctes.micontabilidad.data.local.entity.CategoryEntity
 import com.oryctes.micontabilidad.data.local.entity.ImportBatchEntity
 import com.oryctes.micontabilidad.data.local.entity.ImportProfileEntity
+import com.oryctes.micontabilidad.data.local.entity.InvestmentValuationEntity
 import com.oryctes.micontabilidad.data.local.entity.SourceFileEntity
 import com.oryctes.micontabilidad.data.local.entity.TransactionEntity
 import kotlinx.coroutines.CoroutineScope
@@ -29,9 +31,10 @@ import kotlinx.coroutines.launch
         SourceFileEntity::class,
         ImportBatchEntity::class,
         ImportProfileEntity::class,
-        CategoryEntity::class
+        CategoryEntity::class,
+        InvestmentValuationEntity::class
     ],
-    version = 7,
+    version = 8,
     exportSchema = true
 )
 @TypeConverters(Converters::class)
@@ -42,6 +45,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun importBatchDao(): ImportBatchDao
     abstract fun importProfileDao(): ImportProfileDao
     abstract fun categoryDao(): CategoryDao
+    abstract fun investmentValuationDao(): InvestmentValuationDao
 
     companion object {
         const val DATABASE_NAME = "micontabilidad.db"
@@ -140,13 +144,31 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_7_8 = object : androidx.room.migration.Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS investment_valuations (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        accountId INTEGER NOT NULL,
+                        date TEXT NOT NULL,
+                        value TEXT NOT NULL,
+                        notes TEXT,
+                        createdAt INTEGER NOT NULL,
+                        FOREIGN KEY(accountId) REFERENCES accounts(id) ON UPDATE NO ACTION ON DELETE CASCADE
+                    )
+                """.trimIndent())
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_investment_valuations_accountId ON investment_valuations(accountId)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_investment_valuations_date ON investment_valuations(date)")
+            }
+        }
+
         fun buildDatabase(context: Context): AppDatabase {
             return Room.databaseBuilder(
                 context.applicationContext,
                 AppDatabase::class.java,
                 DATABASE_NAME
             )
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
             .fallbackToDestructiveMigration()
             .addCallback(object : Callback() {
                 override fun onCreate(db: SupportSQLiteDatabase) {

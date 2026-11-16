@@ -8,7 +8,8 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
 class AccountRepositoryImpl(
-    private val accountDao: AccountDao
+    private val accountDao: AccountDao,
+    private val investmentValuationDao: com.oryctes.micontabilidad.data.local.dao.InvestmentValuationDao
 ) : AccountRepository {
 
     override fun getAllAccounts(): Flow<List<Account>> {
@@ -37,5 +38,27 @@ class AccountRepositoryImpl(
 
     override suspend fun deleteAccount(account: Account) {
         accountDao.deleteAccount(AccountEntity.fromDomain(account))
+    }
+
+    override fun getAllInvestmentValuations(): Flow<List<com.oryctes.micontabilidad.domain.model.InvestmentValuation>> {
+        return investmentValuationDao.getAllValuationsFlow().map { list -> list.map { it.toDomain() } }
+    }
+
+    override fun getValuationsByAccount(accountId: Long): Flow<List<com.oryctes.micontabilidad.domain.model.InvestmentValuation>> {
+        return investmentValuationDao.getValuationsByAccountFlow(accountId).map { list -> list.map { it.toDomain() } }
+    }
+
+    override suspend fun saveValuation(valuation: com.oryctes.micontabilidad.domain.model.InvestmentValuation): Long {
+        val entity = com.oryctes.micontabilidad.data.local.entity.InvestmentValuationEntity.fromDomain(valuation)
+        return if (valuation.id > 0) {
+            investmentValuationDao.updateValuation(entity)
+            valuation.id
+        } else {
+            investmentValuationDao.insertValuation(entity)
+        }
+    }
+
+    override suspend fun deleteValuation(valuationId: Long) {
+        investmentValuationDao.deleteValuationById(valuationId)
     }
 }

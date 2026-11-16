@@ -34,10 +34,14 @@ data class Account(
 data class AccountWithBalance(
     val account: Account,
     val lastBalance: java.math.BigDecimal? = null,
-    val lastBalanceDate: java.time.LocalDate? = null
+    val lastBalanceDate: java.time.LocalDate? = null,
+    val latestValuation: InvestmentValuation? = null
 )
 
-fun Account.withBalance(transactions: List<Transaction>): AccountWithBalance {
+fun Account.withBalance(
+    transactions: List<Transaction>,
+    valuations: List<InvestmentValuation> = emptyList()
+): AccountWithBalance {
     if (this.type == AccountType.DEPOSIT) {
         return AccountWithBalance(
             account = this,
@@ -46,6 +50,21 @@ fun Account.withBalance(transactions: List<Transaction>): AccountWithBalance {
         )
     }
     if (this.type == AccountType.INVESTMENT) {
+        val accountValuations = valuations.filter { it.accountId == this.id }
+        if (accountValuations.isNotEmpty()) {
+            val latestVal = accountValuations.maxWithOrNull(
+                compareBy<InvestmentValuation> { it.date }.thenBy { it.id }
+            )
+            if (latestVal != null) {
+                return AccountWithBalance(
+                    account = this,
+                    lastBalance = latestVal.value,
+                    lastBalanceDate = latestVal.date,
+                    latestValuation = latestVal
+                )
+            }
+        }
+
         val accountTxs = transactions.filter {
             it.accountId == this.id && it.reviewStatus != ReviewStatus.DISCARDED
         }

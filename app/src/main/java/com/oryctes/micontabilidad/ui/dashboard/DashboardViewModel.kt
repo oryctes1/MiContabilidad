@@ -43,8 +43,9 @@ class DashboardViewModel(
     val uiState: StateFlow<DashboardUiState> = combine(
         accountRepository.getAllAccounts(),
         transactionRepository.getFilteredTransactions(null, null, null, null),
-        transactionRepository.getMonthlySummaries(null, currentYear)
-    ) { allAccounts, allTxs, summaries ->
+        transactionRepository.getMonthlySummaries(null, currentYear),
+        accountRepository.getAllInvestmentValuations()
+    ) { allAccounts, allTxs, summaries, valuations ->
         val currentMonth = summaries.find { it.yearMonth == currentYearMonth }
         val recent = allTxs.take(5)
 
@@ -55,7 +56,7 @@ class DashboardViewModel(
             !it.isArchived && it.type != com.oryctes.micontabilidad.domain.model.AccountType.DEPOSIT &&
                     it.type != com.oryctes.micontabilidad.domain.model.AccountType.INVESTMENT
         }
-        val regularWithBalance = activeRegularAccounts.map { it.withBalance(allTxs) }.sortedForDisplay()
+        val regularWithBalance = activeRegularAccounts.map { it.withBalance(allTxs, valuations) }.sortedForDisplay()
         val regularBalanceSum = regularWithBalance.mapNotNull { it.lastBalance }
             .fold(BigDecimal.ZERO) { acc, b -> acc.add(b) }
 
@@ -92,18 +93,20 @@ class DashboardViewModel(
                 } else {
                     // No se encuentra en los extractos aún:
                     // Sigue contabilizándose como inversión y salta la advertencia
-                    computedInvestments.add(inv.withBalance(allTxs))
+                    computedInvestments.add(inv.withBalance(allTxs, valuations))
                     hasOutdatedAlert = true
                 }
             } else {
                 // Inversión vigente / activa:
                 // Se contabiliza en la cartera de inversiones
-                computedInvestments.add(inv.withBalance(allTxs))
+                val invWithBalance = inv.withBalance(allTxs, valuations)
+                computedInvestments.add(invWithBalance)
 
                 // Los productos de inversión (INVESTMENT: planes de pensiones, fondos, acciones, inmovilizados)
-                // no computan en el saldo disponible estimado diario.
+                // no computan en el saldo disponible estimado diario. Descontamos el balance computado.
                 if (inv.type == com.oryctes.micontabilidad.domain.model.AccountType.INVESTMENT) {
-                    adjustmentToTotalBalance = adjustmentToTotalBalance.subtract(amount)
+                    val invValue = invWithBalance.lastBalance ?: amount
+                    adjustmentToTotalBalance = adjustmentToTotalBalance.subtract(invValue)
                 } else {
                     // Para depósitos bancarios vigentes:
                     // Comprobamos si la retirada de apertura ya está en los extractos bancarios:

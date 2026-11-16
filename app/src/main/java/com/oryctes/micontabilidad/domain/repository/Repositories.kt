@@ -23,6 +23,12 @@ interface AccountRepository {
     suspend fun updateAccount(account: Account)
     suspend fun setArchived(id: Long, archived: Boolean)
     suspend fun deleteAccount(account: Account)
+
+    // Valoraciones de inversión
+    fun getAllInvestmentValuations(): Flow<List<com.oryctes.micontabilidad.domain.model.InvestmentValuation>>
+    fun getValuationsByAccount(accountId: Long): Flow<List<com.oryctes.micontabilidad.domain.model.InvestmentValuation>>
+    suspend fun saveValuation(valuation: com.oryctes.micontabilidad.domain.model.InvestmentValuation): Long
+    suspend fun deleteValuation(valuationId: Long)
 }
 
 interface TransactionRepository {

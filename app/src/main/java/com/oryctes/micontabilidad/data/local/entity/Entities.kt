@@ -328,3 +328,50 @@ data class CategoryEntity(
         )
     }
 }
+
+@Entity(
+    tableName = "investment_valuations",
+    foreignKeys = [
+        ForeignKey(
+            entity = AccountEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["accountId"],
+            onDelete = ForeignKey.CASCADE
+        )
+    ],
+    indices = [
+        Index(value = ["accountId"]),
+        Index(value = ["date"])
+    ]
+)
+data class InvestmentValuationEntity(
+    @PrimaryKey(autoGenerate = true)
+    val id: Long = 0,
+    val accountId: Long,
+    val date: LocalDate,
+    val value: BigDecimal,
+    val notes: String? = null,
+    val createdAt: Long = System.currentTimeMillis()
+) {
+    fun toDomain(): com.oryctes.micontabilidad.domain.model.InvestmentValuation =
+        com.oryctes.micontabilidad.domain.model.InvestmentValuation(
+            id = id,
+            accountId = accountId,
+            date = date,
+            value = value,
+            notes = notes,
+            createdAt = createdAt
+        )
+
+    companion object {
+        fun fromDomain(model: com.oryctes.micontabilidad.domain.model.InvestmentValuation): InvestmentValuationEntity =
+            InvestmentValuationEntity(
+                id = model.id,
+                accountId = model.accountId,
+                date = model.date,
+                value = model.value,
+                notes = model.notes,
+                createdAt = model.createdAt
+            )
+    }
+}

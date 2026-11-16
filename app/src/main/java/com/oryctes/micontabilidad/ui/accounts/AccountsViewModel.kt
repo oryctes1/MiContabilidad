@@ -20,6 +20,7 @@ data class AccountsUiState(
     val expiredDeposits: List<AccountWithBalance> = emptyList(),
     val activeInvestments: List<AccountWithBalance> = emptyList(),
     val totalInvestedAmount: java.math.BigDecimal = java.math.BigDecimal.ZERO,
+    val valuationsByAccount: Map<Long, List<com.oryctes.micontabilidad.domain.model.InvestmentValuation>> = emptyMap(),
     val isEditing: Boolean = false,
     val selectedAccount: Account? = null
 )
@@ -31,8 +32,9 @@ class AccountsViewModel(
 
     val uiState: StateFlow<AccountsUiState> = combine(
         accountRepository.getAllAccounts(),
-        transactionRepository.getFilteredTransactions(null, null, null, null)
-    ) { accounts, allTxs ->
+        transactionRepository.getFilteredTransactions(null, null, null, null),
+        accountRepository.getAllInvestmentValuations()
+    ) { accounts, allTxs, valuations ->
         val today = java.time.LocalDate.now()
 
         // 1. Depósitos que ya han vencido por fecha (endDate <= hoy) se auto-archivan si aún no lo están
@@ -45,7 +47,7 @@ class AccountsViewModel(
             accountRepository.setArchived(expiredDeposit.id, true)
         }
 
-        val allWithBalance = accounts.map { it.withBalance(allTxs) }
+        val allWithBalance = accounts.map { it.withBalance(allTxs, valuations) }
 
         // Depósitos vencidos: tipo DEPOSIT cuyo endDate <= hoy (o archivados)
         val expired = allWithBalance.filter {
@@ -84,7 +86,8 @@ class AccountsViewModel(
             accounts = sortedActive,
             expiredDeposits = expired,
             activeInvestments = activeInvestments,
-            totalInvestedAmount = totalInvested
+            totalInvestedAmount = totalInvested,
+            valuationsByAccount = valuations.groupBy { it.accountId }
         )
     }.stateIn(
         scope = viewModelScope,
@@ -140,6 +143,32 @@ class AccountsViewModel(
     fun deleteAccount(account: Account) {
         viewModelScope.launch {
             accountRepository.deleteAccount(account)
+        }
+    }
+
+    fun saveInvestmentValuation(
+        id: Long = 0,
+        accountId: Long,
+        date: java.time.LocalDate,
+        value: java.math.BigDecimal,
+        notes: String? = null
+    ) {
+        viewModelScope.launch {
+            accountRepository.saveValuation(
+                com.oryctes.micontabilidad.domain.model.InvestmentValuation(
+                    id = id,
+                    accountId = accountId,
+                    date = date,
+                    value = value,
+                    notes = notes?.trim()?.ifBlank { null }
+                )
+            )
+        }
+    }
+
+    fun deleteInvestmentValuation(valuationId: Long) {
+        viewModelScope.launch {
+            accountRepository.deleteValuation(valuationId)
         }
     }
 }

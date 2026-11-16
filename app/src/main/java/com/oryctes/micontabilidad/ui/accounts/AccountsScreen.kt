@@ -4,6 +4,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -27,6 +28,7 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Unarchive
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenuItem
@@ -164,6 +166,20 @@ fun AccountsScreen(
         if (showDialog) {
             AccountFormDialog(
                 account = accountToEdit,
+                valuations = accountToEdit?.id?.let { uiState.valuationsByAccount[it] } ?: emptyList(),
+                onAddValuation = { date, value, notes ->
+                    accountToEdit?.id?.let { accId ->
+                        viewModel.saveInvestmentValuation(
+                            accountId = accId,
+                            date = date,
+                            value = value,
+                            notes = notes
+                        )
+                    }
+                },
+                onDeleteValuation = { valuationId ->
+                    viewModel.deleteInvestmentValuation(valuationId)
+                },
                 onDismiss = { showDialog = false },
                 onSave = { alias, entity, type, currency, last4, notes, initialAmount, interestRate, startDate, termMonths, endDate, expectedInterest ->
                     viewModel.saveAccount(
@@ -588,6 +604,69 @@ fun AccountCard(
                         }
                     }
 
+                    if (account.type == AccountType.INVESTMENT && accountWithBalance.latestValuation != null) {
+                        val initial = account.initialAmount ?: BigDecimal.ZERO
+                        val currentVal = accountWithBalance.latestValuation.value
+                        val profitLoss = currentVal.subtract(initial)
+                        val profitLossPct = if (initial > BigDecimal.ZERO) {
+                            profitLoss.multiply(BigDecimal(100)).divide(initial, 2, RoundingMode.HALF_UP)
+                        } else null
+
+                        Spacer(modifier = Modifier.height(8.dp))
+                        androidx.compose.material3.HorizontalDivider()
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column {
+                                Text(
+                                    text = "Última valoración (${accountWithBalance.latestValuation.date.format(dateFormatter)}):",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                if (!accountWithBalance.latestValuation.notes.isNullOrBlank()) {
+                                    Text(
+                                        text = accountWithBalance.latestValuation.notes,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                                    )
+                                }
+                            }
+                            Text(
+                                text = "${currentVal.toPlainString()} ${account.currency}",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+
+                        if (initial > BigDecimal.ZERO) {
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "Rendimiento acumulado:",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                val sign = if (profitLoss >= BigDecimal.ZERO) "+" else ""
+                                val profitColor = if (profitLoss >= BigDecimal.ZERO) com.oryctes.micontabilidad.ui.theme.IncomeGreen else MaterialTheme.colorScheme.error
+                                Text(
+                                    text = "$sign${profitLoss.toPlainString()} ${account.currency} ($sign${profitLossPct?.toPlainString()}%)",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = profitColor
+                                )
+                            }
+                        }
+                    }
+
                     if (account.type == AccountType.DEPOSIT) {
                         Spacer(modifier = Modifier.height(8.dp))
                         androidx.compose.material3.HorizontalDivider()
@@ -711,6 +790,9 @@ fun AccountCard(
 @Composable
 fun AccountFormDialog(
     account: Account?,
+    valuations: List<com.oryctes.micontabilidad.domain.model.InvestmentValuation> = emptyList(),
+    onAddValuation: (LocalDate, BigDecimal, String?) -> Unit = { _, _, _ -> },
+    onDeleteValuation: (Long) -> Unit = {},
     onDismiss: () -> Unit,
     onSave: (
         alias: String,
@@ -731,6 +813,11 @@ fun AccountFormDialog(
     val dateFormatter = remember { DateTimeFormatter.ofPattern("dd/MM/yyyy") }
 
     var alias by remember { mutableStateOf(account?.alias.orEmpty()) }
+    // Estado para nueva valoración de inversión
+    var showAddValuationDialog by remember { mutableStateOf(false) }
+    var valuationDateVal by remember { mutableStateOf(LocalDate.now()) }
+    var valuationValueText by remember { mutableStateOf("") }
+    var valuationNotesText by remember { mutableStateOf("") }
     var entity by remember { mutableStateOf(account?.entity.orEmpty()) }
     var selectedType by remember { mutableStateOf(account?.type ?: AccountType.CHECKING) }
     var currency by remember { mutableStateOf(account?.currency ?: "EUR") }
@@ -1043,6 +1130,105 @@ fun AccountFormDialog(
                             modifier = Modifier.fillMaxWidth()
                         )
                     }
+
+                    // Historial de valoraciones (si ya está guardada la inversión)
+                    if (account != null) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        androidx.compose.material3.HorizontalDivider()
+                        Spacer(modifier = Modifier.height(4.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Historial de Valoraciones",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            FilledTonalButton(
+                                onClick = {
+                                    valuationDateVal = LocalDate.now()
+                                    valuationValueText = ""
+                                    valuationNotesText = ""
+                                    showAddValuationDialog = true
+                                },
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                            ) {
+                                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Añadir", style = MaterialTheme.typography.labelSmall)
+                            }
+                        }
+
+                        if (valuations.isEmpty()) {
+                            Text(
+                                text = "No hay valoraciones registradas para esta inversión.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                modifier = Modifier.padding(vertical = 4.dp)
+                            )
+                        } else {
+                            Column(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                valuations.forEach { valItem ->
+                                    Card(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        colors = CardDefaults.cardColors(
+                                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                                        )
+                                    ) {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(horizontal = 8.dp, vertical = 6.dp),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    Text(
+                                                        text = valItem.date.format(dateFormatter),
+                                                        fontWeight = FontWeight.Bold,
+                                                        style = MaterialTheme.typography.bodySmall
+                                                    )
+                                                    Spacer(modifier = Modifier.width(8.dp))
+                                                    Text(
+                                                        text = "${valItem.value.toPlainString()} $currency",
+                                                        fontWeight = FontWeight.SemiBold,
+                                                        color = MaterialTheme.colorScheme.primary,
+                                                        style = MaterialTheme.typography.bodySmall
+                                                    )
+                                                }
+                                                if (!valItem.notes.isNullOrBlank()) {
+                                                    Text(
+                                                        text = valItem.notes,
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                    )
+                                                }
+                                            }
+                                            IconButton(
+                                                onClick = { onDeleteValuation(valItem.id) },
+                                                modifier = Modifier.size(24.dp)
+                                            ) {
+                                                Icon(
+                                                    Icons.Default.Delete,
+                                                    contentDescription = "Eliminar valoración",
+                                                    tint = MaterialTheme.colorScheme.error,
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 } else {
                     // Campos para cuentas estándar / tarjetas
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -1118,4 +1304,87 @@ fun AccountFormDialog(
             }
         }
     )
+
+    if (showAddValuationDialog) {
+        AlertDialog(
+            onDismissRequest = { showAddValuationDialog = false },
+            title = { Text("Nueva Valoración") },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        OutlinedTextField(
+                            value = valuationDateVal.format(dateFormatter),
+                            onValueChange = {},
+                            readOnly = true,
+                            label = { Text("Fecha de valoración *", style = MaterialTheme.typography.bodySmall) },
+                            trailingIcon = {
+                                IconButton(onClick = {
+                                    DatePickerDialog(
+                                        context,
+                                        { _, year, month, dayOfMonth ->
+                                            valuationDateVal = LocalDate.of(year, month + 1, dayOfMonth)
+                                        },
+                                        valuationDateVal.year,
+                                        valuationDateVal.monthValue - 1,
+                                        valuationDateVal.dayOfMonth
+                                    ).show()
+                                }) {
+                                    Icon(Icons.Default.CalendarMonth, contentDescription = "Seleccionar fecha", modifier = Modifier.size(20.dp))
+                                }
+                            },
+                            singleLine = true,
+                            textStyle = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+
+                    OutlinedTextField(
+                        value = valuationValueText,
+                        onValueChange = { valuationValueText = it },
+                        label = { Text("Valor actual (€) *", style = MaterialTheme.typography.bodySmall) },
+                        placeholder = { Text("12500.50") },
+                        singleLine = true,
+                        textStyle = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    OutlinedTextField(
+                        value = valuationNotesText,
+                        onValueChange = { valuationNotesText = it },
+                        label = { Text("Notas / Observaciones", style = MaterialTheme.typography.bodySmall) },
+                        placeholder = { Text("ej. Cierre mensual, subida bolsa...") },
+                        maxLines = 2,
+                        textStyle = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val parsedVal = valuationValueText.replace(',', '.').toBigDecimalOrNull()
+                        if (parsedVal != null) {
+                            onAddValuation(
+                                valuationDateVal,
+                                parsedVal,
+                                valuationNotesText.takeIf { it.isNotBlank() }
+                            )
+                            showAddValuationDialog = false
+                        }
+                    },
+                    enabled = valuationValueText.replace(',', '.').toBigDecimalOrNull() != null
+                ) {
+                    Text("Guardar Valoración")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showAddValuationDialog = false }) {
+                    Text("Cancelar")
+                }
+            }
+        )
+    }
 }

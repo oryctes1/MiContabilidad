@@ -508,10 +508,12 @@ fun InvestmentsDialog(
                                         }
                                     }
                                 } else if (acc.type == AccountType.INVESTMENT) {
-                                    if (acc.startDate != null) {
+                                    if (acc.startDate != null || item.latestValuation != null) {
                                         Spacer(modifier = Modifier.height(6.dp))
                                         HorizontalDivider()
                                         Spacer(modifier = Modifier.height(6.dp))
+                                    }
+                                    if (acc.startDate != null) {
                                         Row(
                                             modifier = Modifier.fillMaxWidth(),
                                             horizontalArrangement = Arrangement.SpaceBetween
@@ -526,6 +528,54 @@ fun InvestmentsDialog(
                                                 fontWeight = FontWeight.SemiBold,
                                                 style = MaterialTheme.typography.bodySmall
                                             )
+                                        }
+                                    }
+                                    if (item.latestValuation != null) {
+                                        val initial = acc.initialAmount ?: BigDecimal.ZERO
+                                        val currentVal = item.latestValuation.value
+                                        val profitLoss = currentVal.subtract(initial)
+                                        val profitLossPct = if (initial > BigDecimal.ZERO) {
+                                            profitLoss.multiply(BigDecimal(100)).divide(initial, 2, java.math.RoundingMode.HALF_UP)
+                                        } else null
+
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Text(
+                                                text = "Última valoración (${item.latestValuation.date.format(dateFormatter)}):",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                            Text(
+                                                text = "${currentVal.toPlainString()} ${acc.currency}",
+                                                fontWeight = FontWeight.Bold,
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.primary
+                                            )
+                                        }
+
+                                        if (initial > BigDecimal.ZERO) {
+                                            Spacer(modifier = Modifier.height(2.dp))
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween
+                                            ) {
+                                                Text(
+                                                    text = "Rendimiento:",
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                                val sign = if (profitLoss >= BigDecimal.ZERO) "+" else ""
+                                                val profitColor = if (profitLoss >= BigDecimal.ZERO) IncomeGreen else MaterialTheme.colorScheme.error
+                                                Text(
+                                                    text = "$sign${profitLoss.toPlainString()} ${acc.currency} ($sign${profitLossPct?.toPlainString()}%)",
+                                                    fontWeight = FontWeight.Bold,
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = profitColor
+                                                )
+                                            }
                                         }
                                     }
                                 }
