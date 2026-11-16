@@ -100,18 +100,25 @@ class DashboardViewModel(
                 // Se contabiliza en la cartera de inversiones
                 computedInvestments.add(inv.withBalance(allTxs))
 
-                // Comprobamos si la retirada de apertura ya está en los extractos bancarios:
-                val hasWithdrawalInStatements = validTxs.any { tx ->
-                    tx.amount < BigDecimal.ZERO &&
-                            tx.amount.abs().compareTo(amount) == 0 &&
-                            (inv.startDate == null || !tx.operationDate.isBefore(inv.startDate.minusDays(5)))
-                }
-
-                if (!hasWithdrawalInStatements) {
-                    // Si aún no aparece la retirada en los extractos, el saldo de la cuenta bancaria de origen
-                    // aún tiene ese dinero. Se descuenta del saldo total estimado para no duplicarlo y salta aviso.
+                // Los productos de inversión (INVESTMENT: planes de pensiones, fondos, acciones, inmovilizados)
+                // no computan en el saldo disponible estimado diario.
+                if (inv.type == com.oryctes.micontabilidad.domain.model.AccountType.INVESTMENT) {
                     adjustmentToTotalBalance = adjustmentToTotalBalance.subtract(amount)
-                    hasOutdatedAlert = true
+                } else {
+                    // Para depósitos bancarios vigentes:
+                    // Comprobamos si la retirada de apertura ya está en los extractos bancarios:
+                    val hasWithdrawalInStatements = validTxs.any { tx ->
+                        tx.amount < BigDecimal.ZERO &&
+                                tx.amount.abs().compareTo(amount) == 0 &&
+                                (inv.startDate == null || !tx.operationDate.isBefore(inv.startDate.minusDays(5)))
+                    }
+
+                    if (!hasWithdrawalInStatements) {
+                        // Si aún no aparece la retirada en los extractos, el saldo de la cuenta bancaria de origen
+                        // aún tiene ese dinero. Se descuenta del saldo total estimado para no duplicarlo y salta aviso.
+                        adjustmentToTotalBalance = adjustmentToTotalBalance.subtract(amount)
+                        hasOutdatedAlert = true
+                    }
                 }
             }
         }
