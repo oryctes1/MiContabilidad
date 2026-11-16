@@ -256,6 +256,12 @@ fun AccountsScreen(
                     accountToEdit = account
                     showInvestmentsDialog = false
                     showDialog = true
+                },
+                onToggleArchive = { account ->
+                    viewModel.toggleArchived(account)
+                },
+                onDelete = { account ->
+                    accountToDelete = account
                 }
             )
         }

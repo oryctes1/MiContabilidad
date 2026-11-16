@@ -73,10 +73,11 @@ class AccountsViewModel(
             .fold(java.math.BigDecimal.ZERO) { acc, b -> acc.add(b) }
 
         // Cuentas visibles en Cuentas y Tarjetas:
-        // Excluye los depósitos vencidos (ya sea por fecha o archivados)
+        // Solo cuentas bancarias / operativas (se excluyen depósitos e inversiones, que van en su apartado)
         val activeAccounts = allWithBalance.filter {
-            !(it.account.type == AccountType.DEPOSIT &&
-              ((it.account.endDate != null && !it.account.endDate.isAfter(today)) || it.account.isArchived))
+            !it.account.isArchived &&
+            it.account.type != AccountType.DEPOSIT &&
+            it.account.type != AccountType.INVESTMENT
         }
 
         // Ordenar: cuentas con movimientos recientes primero, y depósitos al final por vencimiento más próximo

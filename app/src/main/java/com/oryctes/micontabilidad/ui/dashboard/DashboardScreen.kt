@@ -20,8 +20,12 @@ import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.AccountBalance
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.CreditCard
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FileDownload
+import androidx.compose.material.icons.filled.Unarchive
 import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material.icons.filled.Warning
 import com.oryctes.micontabilidad.ui.theme.WarningOrange
@@ -342,7 +346,9 @@ fun InvestmentsDialog(
     totalInvestments: BigDecimal,
     investmentAccounts: List<AccountWithBalance>,
     onDismiss: () -> Unit,
-    onAccountClick: ((Account) -> Unit)? = null
+    onAccountClick: ((Account) -> Unit)? = null,
+    onToggleArchive: ((Account) -> Unit)? = null,
+    onDelete: ((Account) -> Unit)? = null
 ) {
     val dateFormatter = remember { java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy") }
 
@@ -413,8 +419,56 @@ fun InvestmentsDialog(
                                         text = "${amount.toPlainString()} ${acc.currency}",
                                         fontWeight = FontWeight.Bold,
                                         style = MaterialTheme.typography.titleMedium,
-                                        color = MaterialTheme.colorScheme.primary
+                                        color = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.padding(start = 8.dp)
                                     )
+                                }
+
+                                if (onAccountClick != null || onToggleArchive != null || onDelete != null) {
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.End,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        if (onAccountClick != null) {
+                                            IconButton(
+                                                onClick = { onAccountClick(acc) },
+                                                modifier = Modifier.size(32.dp)
+                                            ) {
+                                                Icon(
+                                                    Icons.Default.Edit,
+                                                    contentDescription = "Editar",
+                                                    modifier = Modifier.size(18.dp)
+                                                )
+                                            }
+                                        }
+                                        if (onToggleArchive != null) {
+                                            IconButton(
+                                                onClick = { onToggleArchive(acc) },
+                                                modifier = Modifier.size(32.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = if (acc.isArchived) Icons.Default.Unarchive else Icons.Default.Archive,
+                                                    contentDescription = if (acc.isArchived) "Desarchivar" else "Archivar",
+                                                    modifier = Modifier.size(18.dp)
+                                                )
+                                            }
+                                        }
+                                        if (onDelete != null) {
+                                            IconButton(
+                                                onClick = { onDelete(acc) },
+                                                modifier = Modifier.size(32.dp)
+                                            ) {
+                                                Icon(
+                                                    Icons.Default.Delete,
+                                                    contentDescription = "Eliminar",
+                                                    tint = MaterialTheme.colorScheme.error,
+                                                    modifier = Modifier.size(18.dp)
+                                                )
+                                            }
+                                        }
+                                    }
                                 }
 
                                 if (acc.type == AccountType.DEPOSIT) {
