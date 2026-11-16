@@ -233,7 +233,12 @@ fun AccountsScreen(
             InvestmentsDialog(
                 totalInvestments = uiState.totalInvestedAmount,
                 investmentAccounts = uiState.activeInvestments,
-                onDismiss = { showInvestmentsDialog = false }
+                onDismiss = { showInvestmentsDialog = false },
+                onAccountClick = { account ->
+                    accountToEdit = account
+                    showInvestmentsDialog = false
+                    showDialog = true
+                }
             )
         }
     }

@@ -341,7 +341,8 @@ fun DashboardScreen(
 fun InvestmentsDialog(
     totalInvestments: BigDecimal,
     investmentAccounts: List<AccountWithBalance>,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    onAccountClick: ((Account) -> Unit)? = null
 ) {
     val dateFormatter = remember { java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy") }
 
@@ -378,6 +379,8 @@ fun InvestmentsDialog(
                     items(investmentAccounts, key = { it.account.id }) { item ->
                         val acc = item.account
                         Card(
+                            onClick = { onAccountClick?.invoke(acc) },
+                            enabled = onAccountClick != null,
                             modifier = Modifier.fillMaxWidth(),
                             colors = CardDefaults.cardColors(
                                 containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
