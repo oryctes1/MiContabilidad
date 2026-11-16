@@ -151,12 +151,30 @@ class TransactionsViewModel(
                 true
             } else {
                 val q = filter.searchQuery.trim()
-                val qNormalized = q.replace(',', '.')
-                val amountStr = tx.amount.toPlainString()
-                val absAmountStr = tx.amount.abs().toPlainString()
-                tx.concept.contains(q, ignoreCase = true) ||
-                        amountStr.contains(qNormalized) ||
-                        absAmountStr.contains(qNormalized)
+                if (q.startsWith(">") || q.startsWith("<")) {
+                    val isGreater = q.startsWith(">")
+                    val rawTarget = q.substring(1).trim().replace(',', '.')
+                    val targetVal = rawTarget.toBigDecimalOrNull()
+                    if (targetVal != null) {
+                        val isTargetNegative = rawTarget.startsWith("-")
+                        if (isTargetNegative) {
+                            if (isGreater) tx.amount > targetVal else tx.amount < targetVal
+                        } else {
+                            val absAmount = tx.amount.abs()
+                            if (isGreater) absAmount > targetVal else absAmount < targetVal
+                        }
+                    } else {
+                        // Si después de > o < aún no se ha escrito un número válido, buscar en concepto
+                        tx.concept.contains(q, ignoreCase = true)
+                    }
+                } else {
+                    val qNormalized = q.replace(',', '.')
+                    val amountStr = tx.amount.toPlainString()
+                    val absAmountStr = tx.amount.abs().toPlainString()
+                    tx.concept.contains(q, ignoreCase = true) ||
+                            amountStr.contains(qNormalized) ||
+                            absAmountStr.contains(qNormalized)
+                }
             }
             matchesAccount && afterStart && beforeEnd && matchesSearch
         }

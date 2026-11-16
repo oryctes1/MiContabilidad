@@ -39,7 +39,10 @@ class TransactionRepositoryImpl(
         searchQuery: String?
     ): Flow<List<Transaction>> {
         val query = if (searchQuery.isNullOrBlank()) null else searchQuery.trim()
-        val normalizedQuery = query?.replace(',', '.')
+        val isComparisonQuery = query != null && (query.startsWith(">") || query.startsWith("<"))
+        // Si es una consulta de comparación por cuantía (> o <), no filtramos en SQL para no limitar por LIKE de texto
+        // y permitir que el filtrado de precisión numérica se aplique en memoria.
+        val normalizedQuery = if (isComparisonQuery) null else query?.replace(',', '.')
         return transactionDao.getFilteredTransactionsFlow(accountId, startDate, endDate, normalizedQuery)
             .map { list ->
                 val domainList = list.map { it.toDomain() }
