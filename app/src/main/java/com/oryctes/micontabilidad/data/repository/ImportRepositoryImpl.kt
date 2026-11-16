@@ -248,7 +248,7 @@ class ImportRepositoryImpl(
                 // 5. Categorización automática sugerida
                 val inferredCat = inferCategory(concept, allCategories, amount)
                 val categoryId = inferredCat?.id?.takeIf { it > 0 }
-                val isAhorro = inferredCat?.name.equals("Ahorro", ignoreCase = true)
+                val isAhorro = inferredCat?.type == "SAVING" || inferredCat?.name.equals("Ahorro", ignoreCase = true)
 
                 val isCreditCardTx = account.type == com.oryctes.micontabilidad.domain.model.AccountType.CREDIT_CARD ||
                     concept.contains("Liquidado", ignoreCase = true) ||
@@ -310,7 +310,7 @@ class ImportRepositoryImpl(
                     isPossibleDuplicate = isDuplicate,
                     reviewStatus = if (isDuplicate) ReviewStatus.PENDING_REVIEW else ReviewStatus.CONFIRMED,
                     categoryId = categoryId,
-                    isExcludedFromTotals = isSettlementTx,
+                    isExcludedFromTotals = isSettlementTx || isAhorro,
                     isCreditCard = isCreditCardTx,
                     notes = finalNotes
                 )
@@ -495,7 +495,7 @@ class ImportRepositoryImpl(
 
             val inferredCat = inferCategory(concept, allCategories, amount)
             val categoryId = inferredCat?.id?.takeIf { it > 0 }
-            val isAhorro = inferredCat?.name.equals("Ahorro", ignoreCase = true)
+            val isAhorro = inferredCat?.type == "SAVING" || inferredCat?.name.equals("Ahorro", ignoreCase = true)
             val isCreditCardTx = account.type == com.oryctes.micontabilidad.domain.model.AccountType.CREDIT_CARD ||
                     concept.contains("Liquidado", ignoreCase = true) ||
                     fileName.contains("tarjeta", ignoreCase = true)
@@ -555,7 +555,7 @@ class ImportRepositoryImpl(
                 isPossibleDuplicate = isDuplicate,
                 reviewStatus = if (isDuplicate) ReviewStatus.PENDING_REVIEW else ReviewStatus.CONFIRMED,
                 categoryId = categoryId,
-                isExcludedFromTotals = isSettlementTx,
+                isExcludedFromTotals = isSettlementTx || isAhorro,
                 isCreditCard = isCreditCardTx,
                 notes = finalNotes
             )

@@ -86,7 +86,9 @@ class TransactionRepositoryImpl(
     }
 
     override suspend fun categorizeUncategorizedTransactions() {
-        // Asegurar que movimientos de tarjeta y cargos mensuales queden clasificados
+        val categoriesMap = categoryDao.getAllCategories().associateBy { it.id }
+
+        // Asegurar que movimientos de tarjeta, cargos mensuales y productos de ahorro queden clasificados y excluidos
         val all = transactionDao.getAllTransactionsFlow().first()
         for (tx in all) {
             var updated = tx
@@ -96,6 +98,13 @@ class TransactionRepositoryImpl(
                 changed = true
             }
             if (!tx.isExcludedFromTotals && tx.concept.contains(Regex("(cargo|liquidaci[oó]n|pago|recibo)\\s+.*tarjeta", RegexOption.IGNORE_CASE))) {
+                updated = updated.copy(isExcludedFromTotals = true)
+                changed = true
+            }
+            // Si la transacción pertenece a una categoría de Ahorro / Inversión, asegurar que por defecto esté excluida de totales
+            val cat = tx.categoryId?.let { categoriesMap[it] }
+            val isSavingCategory = cat != null && (cat.type == "SAVING" || cat.name.equals("Ahorro", ignoreCase = true))
+            if (isSavingCategory && !tx.isExcludedFromTotals) {
                 updated = updated.copy(isExcludedFromTotals = true)
                 changed = true
             }
@@ -160,11 +169,19 @@ class TransactionRepositoryImpl(
             return
         }
         val uncategorized = transactionDao.getUncategorizedTransactions()
-        if (uncategorized.isEmpty()) return
-        for (tx in uncategorized) {
-            val catId = com.oryctes.micontabilidad.domain.normalizer.CategoryInferer.inferCategoryId(tx.concept, existingCategories, tx.amount)
-            if (catId != null) {
-                transactionDao.updateTransaction(tx.copy(categoryId = catId))
+        if (uncategorized.isNotEmpty()) {
+            for (tx in uncategorized) {
+                val inferred = com.oryctes.micontabilidad.domain.normalizer.CategoryInferer.inferCategory(tx.concept, existingCategories, tx.amount)
+                val catId = inferred?.id?.takeIf { it > 0 }
+                if (catId != null) {
+                    val isAhorro = inferred.type == "SAVING" || inferred.name.equals("Ahorro", ignoreCase = true)
+                    transactionDao.updateTransaction(
+                        tx.copy(
+                            categoryId = catId,
+                            isExcludedFromTotals = if (isAhorro) true else tx.isExcludedFromTotals
+                        )
+                    )
+                }
             }
         }
     }
@@ -424,7 +441,7 @@ class TransactionRepositoryImpl(
             }
 
             val inferred = com.oryctes.micontabilidad.domain.normalizer.CategoryInferer.inferCategory(tx.concept, categories, tx.amount)
-            val isAhorro = inferred?.name.equals("Ahorro", ignoreCase = true)
+            val isAhorro = inferred?.type == "SAVING" || inferred?.name.equals("Ahorro", ignoreCase = true)
             val newExcluded = tx.isExcludedFromTotals || isAhorro
             val updated = tx.copy(
                 categoryId = inferred?.id?.takeIf { it > 0 },

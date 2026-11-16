@@ -618,10 +618,13 @@ class TransactionsViewModel(
 
     fun updateTransactionCategory(tx: Transaction, categoryId: Long?) {
         viewModelScope.launch {
-            // Si la categoría asignada es "Ahorro", marcar automáticamente exclusión para que no compute como gasto
+            // Si la categoría asignada es de Ahorro/Inversión, marcar automáticamente exclusión para que no compute ni como gasto ni como ingreso
             val categories = transactionRepository.getCategories().first()
             val category = categoryId?.let { id -> categories.find { it.id == id } }
-            val isAhorro = category?.name.equals("Ahorro", ignoreCase = true)
+            val isAhorro = category != null && (
+                category.type == com.oryctes.micontabilidad.domain.model.CategoryType.SAVING ||
+                category.name.equals("Ahorro", ignoreCase = true)
+            )
 
             val updated = tx.copy(
                 categoryId = categoryId,
