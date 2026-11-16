@@ -589,7 +589,11 @@ fun AccountCard(
                             }
                         }
 
-                        val displayBalance = accountWithBalance.lastBalance ?: account.initialAmount
+                        val displayBalance = if (account.type == AccountType.INVESTMENT) {
+                            accountWithBalance.totalInvestedCapital ?: account.initialAmount
+                        } else {
+                            accountWithBalance.lastBalance ?: account.initialAmount
+                        }
                         if (displayBalance != null) {
                             Text(
                                 text = "${displayBalance.toPlainString()} ${account.currency}",

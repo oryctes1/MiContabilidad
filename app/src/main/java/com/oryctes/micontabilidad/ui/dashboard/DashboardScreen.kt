@@ -404,7 +404,11 @@ fun InvestmentsDialog(
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
                                     }
-                                    val amount = item.lastBalance ?: acc.initialAmount ?: BigDecimal.ZERO
+                                    val amount = if (acc.type == AccountType.INVESTMENT) {
+                                        item.totalInvestedCapital ?: acc.initialAmount ?: BigDecimal.ZERO
+                                    } else {
+                                        item.lastBalance ?: acc.initialAmount ?: BigDecimal.ZERO
+                                    }
                                     Text(
                                         text = "${amount.toPlainString()} ${acc.currency}",
                                         fontWeight = FontWeight.Bold,
@@ -664,7 +668,12 @@ fun AccountMiniCard(
                 overflow = TextOverflow.Ellipsis
             )
             Spacer(modifier = Modifier.height(10.dp))
-            if (accountWithBalance.lastBalance != null) {
+            val displayBalance = if (account.type == AccountType.INVESTMENT) {
+                accountWithBalance.totalInvestedCapital ?: account.initialAmount ?: accountWithBalance.lastBalance
+            } else {
+                accountWithBalance.lastBalance ?: account.initialAmount
+            }
+            if (displayBalance != null) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -672,7 +681,7 @@ fun AccountMiniCard(
                 ) {
                     Column(modifier = Modifier.weight(1f, fill = false)) {
                         Text(
-                            text = "${accountWithBalance.lastBalance.toPlainString()} ${account.currency}",
+                            text = "${displayBalance.toPlainString()} ${account.currency}",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.primary,

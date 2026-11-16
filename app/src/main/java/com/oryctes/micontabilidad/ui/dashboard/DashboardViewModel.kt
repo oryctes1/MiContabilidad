@@ -103,9 +103,9 @@ class DashboardViewModel(
                 computedInvestments.add(invWithBalance)
 
                 // Los productos de inversión (INVESTMENT: planes de pensiones, fondos, acciones, inmovilizados)
-                // no computan en el saldo disponible estimado diario. Descontamos el balance computado.
+                // no computan en el saldo disponible estimado diario. Descontamos el importe invertido computado.
                 if (inv.type == com.oryctes.micontabilidad.domain.model.AccountType.INVESTMENT) {
-                    val invValue = invWithBalance.lastBalance ?: amount
+                    val invValue = invWithBalance.totalInvestedCapital ?: inv.initialAmount ?: BigDecimal.ZERO
                     adjustmentToTotalBalance = adjustmentToTotalBalance.subtract(invValue)
                 } else {
                     // Para depósitos bancarios vigentes:
@@ -126,10 +126,17 @@ class DashboardViewModel(
             }
         }
 
-        val totalInvestments = computedInvestments.mapNotNull { it.lastBalance }
-            .fold(BigDecimal.ZERO) { acc, b -> acc.add(b) }
+        val totalInvestments = computedInvestments.mapNotNull {
+            if (it.account.type == com.oryctes.micontabilidad.domain.model.AccountType.INVESTMENT) {
+                it.totalInvestedCapital ?: it.account.initialAmount
+            } else {
+                it.lastBalance ?: it.account.initialAmount
+            }
+        }.fold(BigDecimal.ZERO) { acc, b -> acc.add(b) }
 
         // Saldo total estimado = Saldo en cuentas corrientes/ahorro + Inversiones computadas - Ajuste por duplicidad
+        // (Nota: para INVESTMENT, adjustmentToTotalBalance resta exactamente su valor de inversión computado arriba
+        // para que las inversiones ilíquidas no alteren el saldo disponible en cuentas bancarias).
         val estimatedTotalBalance = regularBalanceSum.add(totalInvestments).add(adjustmentToTotalBalance)
 
         // Cuentas visibles en la lista horizontal: cuentas regulares + inversiones computadas
