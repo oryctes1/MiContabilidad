@@ -87,20 +87,19 @@ class SummariesViewModel(
         categoryExpensesFlow
     ) { sel, (accounts, allTxs, valuations), monthly, categories ->
         val eligibleAccounts = accounts.filter {
-            !it.isArchived || it.type == AccountType.DEPOSIT || it.type == AccountType.INVESTMENT
+            (!it.isArchived || it.type == AccountType.INVESTMENT) && it.type != AccountType.DEPOSIT
         }
         val sortedAccounts = eligibleAccounts.sortedForDisplay(allTxs)
 
-        // Comprobar si la cuenta seleccionada es una inversión o depósito
+        // Comprobar si la cuenta seleccionada es una inversión
         val selectedAccount = accounts.find { it.id == sel.accountId }
-        val isInvestmentOrDeposit = selectedAccount != null &&
-                (selectedAccount.type == AccountType.INVESTMENT || selectedAccount.type == AccountType.DEPOSIT)
+        val isInvestment = selectedAccount != null && selectedAccount.type == AccountType.INVESTMENT
 
-        val selectedInvestmentInfo = if (isInvestmentOrDeposit) {
+        val selectedInvestmentInfo = if (isInvestment) {
             selectedAccount!!.withBalance(allTxs, valuations)
         } else null
 
-        val investmentHistoryPoints = if (isInvestmentOrDeposit && selectedAccount != null) {
+        val investmentHistoryPoints = if (isInvestment) {
             val shortDateFmt = java.time.format.DateTimeFormatter.ofPattern("dd/MM")
             val fullDateFmt = java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy")
             val accVals = valuations.filter { it.accountId == selectedAccount.id }

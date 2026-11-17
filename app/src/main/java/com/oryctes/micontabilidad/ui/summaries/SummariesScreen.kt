@@ -121,15 +121,11 @@ fun SummariesScreen(
                 }
             }
 
-            // Si se ha seleccionado una inversión o depósito
+            // Si se ha seleccionado una inversión
             val invInfo = uiState.selectedInvestmentInfo
             if (invInfo != null) {
                 val acc = invInfo.account
-                val investedCap = if (acc.type == AccountType.INVESTMENT) {
-                    invInfo.totalInvestedCapital ?: acc.initialAmount ?: BigDecimal.ZERO
-                } else {
-                    acc.initialAmount ?: BigDecimal.ZERO
-                }
+                val investedCap = invInfo.totalInvestedCapital ?: acc.initialAmount ?: BigDecimal.ZERO
                 val currentVal = invInfo.lastBalance ?: investedCap
                 val profitLoss = currentVal.subtract(investedCap)
                 val profitLossPct = if (investedCap > BigDecimal.ZERO) {
@@ -211,44 +207,6 @@ fun SummariesScreen(
                                         style = MaterialTheme.typography.titleMedium,
                                         color = profitColor
                                     )
-                                }
-                            }
-
-                            if (acc.type == AccountType.DEPOSIT) {
-                                acc.interestRate?.let { rate ->
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween
-                                    ) {
-                                        Text(
-                                            text = "Interés acordado (TAE):",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                        Text(
-                                            text = "${rate.toPlainString()}%",
-                                            fontWeight = FontWeight.SemiBold,
-                                            style = MaterialTheme.typography.bodySmall
-                                        )
-                                    }
-                                }
-                                acc.endDate?.let { end ->
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween
-                                    ) {
-                                        Text(
-                                            text = "Fecha de vencimiento:",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                        Text(
-                                            text = end.format(dateFormatter),
-                                            fontWeight = FontWeight.SemiBold,
-                                            style = MaterialTheme.typography.bodySmall
-                                        )
-                                    }
                                 }
                             }
                         }
