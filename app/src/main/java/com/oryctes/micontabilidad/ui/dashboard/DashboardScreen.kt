@@ -73,6 +73,7 @@ import java.math.BigDecimal
 fun DashboardScreen(
     onNavigateToImport: () -> Unit,
     onNavigateToAccounts: () -> Unit,
+    onNavigateToInvestments: () -> Unit = {},
     onNavigateToTransactions: () -> Unit,
     onNavigateToAccountTransactions: (Long) -> Unit = {},
     onNavigateToSummaries: () -> Unit,
@@ -223,7 +224,7 @@ fun DashboardScreen(
                 }
             }
 
-            // 3. Cuentas y Tarjetas activas
+            // 3. Mis Cuentas e Inversiones
             item {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -231,7 +232,7 @@ fun DashboardScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "Mis Cuentas y Tarjetas",
+                        text = "Mis Cuentas e Inversiones",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )
@@ -257,7 +258,7 @@ fun DashboardScreen(
                                 accountWithBalance = item,
                                 onClick = {
                                     if (item.account.type == AccountType.DEPOSIT || item.account.type == AccountType.INVESTMENT) {
-                                        onNavigateToAccounts()
+                                        onNavigateToInvestments()
                                     } else {
                                         onNavigateToAccountTransactions(item.account.id)
                                     }

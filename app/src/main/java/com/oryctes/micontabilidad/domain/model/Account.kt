@@ -169,6 +169,63 @@ fun Account.withBalance(
 
 
 /**
+ * Ordena las cuentas para la cinta deslizable del Dashboard (Mis Cuentas e Inversiones):
+ * 1. Primero las Cuentas operativas (corrientes, ahorro, tarjetas, etc.) en orden cronologico
+ *    inverso por la fecha del ultimo extracto (lastBalanceDate mas reciente primero).
+ * 2. Despues los Depositos (AccountType.DEPOSIT) por fecha de vencimiento mas cercano (endDate ascendente).
+ * 3. Despues el resto de Inversiones (AccountType.INVESTMENT) con la fecha de apertura mas reciente primero (startDate descendente).
+ */
+fun List<AccountWithBalance>.sortedForDashboard(): List<AccountWithBalance> {
+    val regular = this.filter { it.account.type != AccountType.DEPOSIT && it.account.type != AccountType.INVESTMENT }
+    val deposits = this.filter { it.account.type == AccountType.DEPOSIT }
+    val investments = this.filter { it.account.type == AccountType.INVESTMENT }
+
+    val regularSorted = regular.sortedWith { a, b ->
+        val dateA = a.lastBalanceDate
+        val dateB = b.lastBalanceDate
+        when {
+            dateA != null && dateB != null -> {
+                val cmp = dateB.compareTo(dateA) // Mas reciente primero
+                if (cmp != 0) cmp else a.account.alias.compareTo(b.account.alias, ignoreCase = true)
+            }
+            dateA != null && dateB == null -> -1
+            dateA == null && dateB != null -> 1
+            else -> a.account.alias.compareTo(b.account.alias, ignoreCase = true)
+        }
+    }
+
+    val depositsSorted = deposits.sortedWith { a, b ->
+        val endA = a.account.endDate
+        val endB = b.account.endDate
+        when {
+            endA != null && endB != null -> {
+                val cmp = endA.compareTo(endB) // Vencimiento mas cercano primero
+                if (cmp != 0) cmp else a.account.alias.compareTo(b.account.alias, ignoreCase = true)
+            }
+            endA != null && endB == null -> -1
+            endA == null && endB != null -> 1
+            else -> a.account.alias.compareTo(b.account.alias, ignoreCase = true)
+        }
+    }
+
+    val investmentsSorted = investments.sortedWith { a, b ->
+        val startA = a.account.startDate ?: a.lastBalanceDate
+        val startB = b.account.startDate ?: b.lastBalanceDate
+        when {
+            startA != null && startB != null -> {
+                val cmp = startB.compareTo(startA) // Mas reciente primero
+                if (cmp != 0) cmp else a.account.alias.compareTo(b.account.alias, ignoreCase = true)
+            }
+            startA != null && startB == null -> -1
+            startA == null && startB != null -> 1
+            else -> a.account.alias.compareTo(b.account.alias, ignoreCase = true)
+        }
+    }
+
+    return regularSorted + depositsSorted + investmentsSorted
+}
+
+/**
  * Ordena las cuentas para su presentacion en tarjetas deslizables y selectores:
  * 1. Primero las cuentas y tarjetas habituales (no depositos), ordenadas con los movimientos
  *    mas recientes primero (fecha de ultimo movimiento descendente).

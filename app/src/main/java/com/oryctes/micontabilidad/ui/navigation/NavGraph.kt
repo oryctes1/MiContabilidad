@@ -45,6 +45,15 @@ fun NavGraph(
                         restoreState = true
                     }
                 },
+                onNavigateToInvestments = {
+                    navController.navigate(Screen.Investments.route) {
+                        popUpTo(navController.graph.findStartDestination().id) {
+                            saveState = true
+                        }
+                        launchSingleTop = true
+                        restoreState = true
+                    }
+                },
                 onNavigateToTransactions = {
                     navController.navigate(Screen.Transactions.route) {
                         popUpTo(navController.graph.findStartDestination().id) {

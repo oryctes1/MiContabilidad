@@ -8,6 +8,7 @@ import com.oryctes.micontabilidad.domain.model.MonthlySummary
 import com.oryctes.micontabilidad.domain.model.Transaction
 import com.oryctes.micontabilidad.domain.model.withBalance
 import com.oryctes.micontabilidad.domain.model.sortedForDisplay
+import com.oryctes.micontabilidad.domain.model.sortedForDashboard
 import com.oryctes.micontabilidad.domain.repository.AccountRepository
 import com.oryctes.micontabilidad.domain.repository.TransactionRepository
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -139,8 +140,12 @@ class DashboardViewModel(
         // para que las inversiones ilíquidas no alteren el saldo disponible en cuentas bancarias).
         val estimatedTotalBalance = regularBalanceSum.add(totalInvestments).add(adjustmentToTotalBalance)
 
-        // Cuentas visibles en la lista horizontal: cuentas regulares + inversiones computadas
-        val displayAccounts = (regularWithBalance + computedInvestments).sortedForDisplay()
+        // Cuentas visibles en la lista horizontal: cuentas regulares + depósitos + inversiones,
+        // ordenadas con el criterio de Dashboard:
+        // 1. Cuentas operativas por fecha de último extracto (más reciente primero)
+        // 2. Depósitos por vencimiento más cercano
+        // 3. Resto de inversiones por fecha de inversión más reciente primero
+        val displayAccounts = (regularWithBalance + computedInvestments).sortedForDashboard()
 
         DashboardUiState(
             isLoading = false,
