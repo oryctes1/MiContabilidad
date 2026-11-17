@@ -86,7 +86,7 @@ fun AccountsScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Cuentas y Tarjetas", fontWeight = FontWeight.Bold) },
+                title = { Text("Cuentas", fontWeight = FontWeight.Bold) },
                 actions = {
                     Column(
                         horizontalAlignment = Alignment.End,

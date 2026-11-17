@@ -72,7 +72,7 @@ class AccountsViewModel(
             .mapNotNull { it.totalInvestedCapital ?: it.account.initialAmount }
             .fold(java.math.BigDecimal.ZERO) { acc, b -> acc.add(b) }
 
-        // Cuentas visibles en Cuentas y Tarjetas:
+        // Cuentas visibles en Cuentas:
         // Solo cuentas bancarias / operativas (se excluyen depósitos e inversiones, que van en su apartado)
         val activeAccounts = allWithBalance.filter {
             !it.account.isArchived &&
