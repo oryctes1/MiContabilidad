@@ -71,13 +71,18 @@ class ImportViewModel(
             combine(
                 accountRepository.getActiveAccounts(),
                 importRepository.getProfiles()
-            ) { accounts, profiles ->
+            ) { allActiveAccounts, profiles ->
+                // Solo las cuentas en vigor operativas pueden recibir extractos (se excluyen depósitos e inversiones)
+                val eligibleAccounts = allActiveAccounts.filter {
+                    it.type != AccountType.DEPOSIT && it.type != AccountType.INVESTMENT
+                }
                 val latestBatch = importRepository.getLatestBatch()
                 _uiState.value = _uiState.value.copy(
-                    accounts = accounts,
+                    accounts = eligibleAccounts,
                     profiles = profiles,
                     canRollback = latestBatch != null,
-                    selectedAccountId = _uiState.value.selectedAccountId ?: accounts.firstOrNull()?.id
+                    selectedAccountId = _uiState.value.selectedAccountId?.takeIf { id -> eligibleAccounts.any { it.id == id } }
+                        ?: eligibleAccounts.firstOrNull()?.id
                 )
             }.collect {}
         }
@@ -276,7 +281,9 @@ class ImportViewModel(
                 last4 = last4?.trim()?.ifBlank { null }
             )
             val newId = accountRepository.createAccount(newAccount)
-            val updatedAccounts = accountRepository.getActiveAccounts().first()
+            val updatedAccounts = accountRepository.getActiveAccounts().first().filter {
+                it.type != AccountType.DEPOSIT && it.type != AccountType.INVESTMENT
+            }
             _uiState.value = _uiState.value.copy(
                 accounts = updatedAccounts,
                 selectedAccountId = newId,

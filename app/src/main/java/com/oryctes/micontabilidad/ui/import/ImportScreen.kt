@@ -1134,8 +1134,8 @@ fun CreateAccountDialog(
                             val selectableImportTypes = listOf(
                                 AccountType.CHECKING,
                                 AccountType.SAVINGS,
-                                AccountType.DEPOSIT,
-                                AccountType.INVESTMENT
+                                AccountType.CREDIT_CARD,
+                                AccountType.DEBIT_CARD
                             )
                             selectableImportTypes.forEach { t ->
                                 DropdownMenuItem(
