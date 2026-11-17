@@ -4,8 +4,11 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.oryctes.micontabilidad.domain.model.Account
 import com.oryctes.micontabilidad.domain.model.AccountType
+import com.oryctes.micontabilidad.domain.model.AccountWithBalance
+import com.oryctes.micontabilidad.domain.model.withBalance
 import com.oryctes.micontabilidad.domain.model.sortedForDisplay
 import com.oryctes.micontabilidad.domain.model.CategorySummary
+import com.oryctes.micontabilidad.domain.model.InvestmentValuation
 import com.oryctes.micontabilidad.domain.model.MonthlySummary
 import com.oryctes.micontabilidad.domain.repository.AccountRepository
 import com.oryctes.micontabilidad.domain.repository.TransactionRepository
@@ -30,7 +33,9 @@ data class SummariesUiState(
     val categoryExpenses: List<CategorySummary> = emptyList(),
     val totalYearIncome: BigDecimal = BigDecimal.ZERO,
     val totalYearExpense: BigDecimal = BigDecimal.ZERO,
-    val totalYearSavings: BigDecimal = BigDecimal.ZERO
+    val totalYearSavings: BigDecimal = BigDecimal.ZERO,
+    val selectedInvestmentInfo: AccountWithBalance? = null,
+    val investmentHistoryPoints: List<com.oryctes.micontabilidad.ui.components.BalanceDataPoint> = emptyList()
 )
 
 private data class SelectionState(
@@ -66,17 +71,66 @@ class SummariesViewModel(
         transactionRepository.getCategorySummaries(sel.accountId, ym)
     }
 
-    val uiState: StateFlow<SummariesUiState> = combine(
-        selectionState,
+    private val accountDataFlow = combine(
         accountRepository.getAllAccounts(),
         transactionRepository.getFilteredTransactions(null, null, null, null),
+        accountRepository.getAllInvestmentValuations()
+    ) { accounts, allTxs, valuations ->
+        Triple(accounts, allTxs, valuations)
+    }
+
+    val uiState: StateFlow<SummariesUiState> = combine(
+        selectionState,
+        accountDataFlow,
         monthlySummariesFlow,
         categoryExpensesFlow
-    ) { sel, accounts, allTxs, monthly, categories ->
+    ) { sel, (accounts, allTxs, valuations), monthly, categories ->
         val eligibleAccounts = accounts.filter {
-            !it.isArchived || it.type == AccountType.DEPOSIT
+            !it.isArchived || it.type == AccountType.DEPOSIT || it.type == AccountType.INVESTMENT
         }
         val sortedAccounts = eligibleAccounts.sortedForDisplay(allTxs)
+
+        // Comprobar si la cuenta seleccionada es una inversión o depósito
+        val selectedAccount = accounts.find { it.id == sel.accountId }
+        val isInvestmentOrDeposit = selectedAccount != null &&
+                (selectedAccount.type == AccountType.INVESTMENT || selectedAccount.type == AccountType.DEPOSIT)
+
+        val selectedInvestmentInfo = if (isInvestmentOrDeposit) {
+            selectedAccount!!.withBalance(allTxs, valuations)
+        } else null
+
+        val investmentHistoryPoints = if (isInvestmentOrDeposit && selectedAccount != null) {
+            val shortDateFmt = java.time.format.DateTimeFormatter.ofPattern("dd/MM")
+            val fullDateFmt = java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy")
+            val accVals = valuations.filter { it.accountId == selectedAccount.id }
+                .sortedWith(compareBy<InvestmentValuation> { it.date }.thenBy { it.id })
+
+            if (accVals.isNotEmpty()) {
+                accVals.map { v ->
+                    com.oryctes.micontabilidad.ui.components.BalanceDataPoint(
+                        label = v.date.format(shortDateFmt),
+                        fullDate = "${v.date.format(fullDateFmt)} (${v.type.displayName})",
+                        balance = v.value
+                    )
+                }
+            } else {
+                // Si no hay valoraciones históricas pero tiene valor inicial
+                val initVal = selectedInvestmentInfo?.lastBalance
+                    ?: selectedAccount.initialAmount
+                    ?: BigDecimal.ZERO
+                val date = selectedAccount.startDate ?: LocalDate.now()
+                listOf(
+                    com.oryctes.micontabilidad.ui.components.BalanceDataPoint(
+                        label = date.format(shortDateFmt),
+                        fullDate = date.format(fullDateFmt),
+                        balance = initVal
+                    )
+                )
+            }
+        } else {
+            emptyList()
+        }
+
         val yearIncome = monthly.fold(BigDecimal.ZERO) { acc, m -> acc.add(m.totalIncome) }
         val yearExpense = monthly.fold(BigDecimal.ZERO) { acc, m -> acc.add(m.totalExpense) }
         val yearSavings = yearIncome.subtract(yearExpense)
@@ -93,7 +147,9 @@ class SummariesViewModel(
             categoryExpenses = chartCategories,
             totalYearIncome = yearIncome,
             totalYearExpense = yearExpense,
-            totalYearSavings = yearSavings
+            totalYearSavings = yearSavings,
+            selectedInvestmentInfo = selectedInvestmentInfo,
+            investmentHistoryPoints = investmentHistoryPoints
         )
     }.stateIn(
         scope = viewModelScope,
