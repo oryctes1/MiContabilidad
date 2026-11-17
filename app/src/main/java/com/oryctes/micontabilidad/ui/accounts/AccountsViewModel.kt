@@ -18,6 +18,7 @@ import kotlinx.coroutines.launch
 data class AccountsUiState(
     val accounts: List<AccountWithBalance> = emptyList(),
     val expiredDeposits: List<AccountWithBalance> = emptyList(),
+    val closedInvestments: List<AccountWithBalance> = emptyList(),
     val activeInvestments: List<AccountWithBalance> = emptyList(),
     val totalInvestedAmount: java.math.BigDecimal = java.math.BigDecimal.ZERO,
     val valuationsByAccount: Map<Long, List<com.oryctes.micontabilidad.domain.model.InvestmentValuation>> = emptyMap(),
@@ -55,12 +56,22 @@ class AccountsViewModel(
             ((it.account.endDate != null && !it.account.endDate.isAfter(today)) || it.account.isArchived)
         }
 
-        // Inversiones activas: depósitos no vencidos ni archivados + productos de inversión no archivados
+        // Inversiones deshechas / cerradas (tipo INVESTMENT archivadas o con endDate definido)
+        val closedInvestments = allWithBalance.filter {
+            it.account.type == AccountType.INVESTMENT &&
+            (it.account.isArchived || it.account.endDate != null)
+        }.sortedWith(
+            compareByDescending<AccountWithBalance> { item ->
+                item.account.endDate ?: item.lastBalanceDate ?: java.time.LocalDate.MIN
+            }.thenBy { it.account.id }
+        )
+
+        // Inversiones activas: depósitos no vencidos ni archivados + productos de inversión no archivados ni liquidados
         val activeInvestments = allWithBalance.filter {
             val acc = it.account
             !acc.isArchived && (
                 (acc.type == AccountType.DEPOSIT && (acc.endDate == null || acc.endDate.isAfter(today))) ||
-                (acc.type == AccountType.INVESTMENT)
+                (acc.type == AccountType.INVESTMENT && acc.endDate == null)
             )
         }.sortedWith(
             compareBy<AccountWithBalance> { item ->
@@ -86,6 +97,7 @@ class AccountsViewModel(
         AccountsUiState(
             accounts = sortedActive,
             expiredDeposits = expired,
+            closedInvestments = closedInvestments,
             activeInvestments = activeInvestments,
             totalInvestedAmount = totalInvested,
             valuationsByAccount = valuations.groupBy { it.accountId }
@@ -172,6 +184,35 @@ class AccountsViewModel(
     fun deleteInvestmentValuation(valuationId: Long) {
         viewModelScope.launch {
             accountRepository.deleteValuation(valuationId)
+        }
+    }
+
+    fun liquidateInvestment(
+        account: Account,
+        liquidationDate: java.time.LocalDate,
+        finalValue: java.math.BigDecimal,
+        notes: String? = null
+    ) {
+        viewModelScope.launch {
+            // 1. Guardar la valoración de tipo LIQUIDATION con la fecha y valor final
+            val noteText = notes?.trim()?.ifBlank { null } ?: "Liquidación / Venta total"
+            accountRepository.saveValuation(
+                com.oryctes.micontabilidad.domain.model.InvestmentValuation(
+                    accountId = account.id,
+                    date = liquidationDate,
+                    value = finalValue,
+                    notes = noteText,
+                    type = com.oryctes.micontabilidad.domain.model.ValuationType.LIQUIDATION
+                )
+            )
+
+            // 2. Actualizar la cuenta estableciendo endDate = liquidationDate e isArchived = true
+            accountRepository.updateAccount(
+                account.copy(
+                    endDate = liquidationDate,
+                    isArchived = true
+                )
+            )
         }
     }
 }

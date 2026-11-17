@@ -72,6 +72,22 @@ fun Account.withBalance(
                 compareBy<InvestmentValuation> { it.date }.thenBy { it.id }
             )
             if (latestItem != null) {
+                // Si la inversión está liquidada (hay una valoración de tipo LIQUIDATION),
+                // el saldo final es el valor liquidado.
+                val liquidationRecord = accountValuations
+                    .filter { it.type == ValuationType.LIQUIDATION }
+                    .maxWithOrNull(compareBy<InvestmentValuation> { it.date }.thenBy { it.id })
+
+                if (liquidationRecord != null) {
+                    return AccountWithBalance(
+                        account = this,
+                        lastBalance = liquidationRecord.value,
+                        lastBalanceDate = liquidationRecord.date,
+                        latestValuation = liquidationRecord,
+                        totalInvestedCapital = totalCap
+                    )
+                }
+
                 // Buscamos la última valoración de mercado propiamente dicha
                 val latestValuationRecord = accountValuations
                     .filter { it.type == ValuationType.VALUATION }

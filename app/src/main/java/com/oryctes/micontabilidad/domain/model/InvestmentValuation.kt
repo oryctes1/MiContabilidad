@@ -5,7 +5,8 @@ import java.time.LocalDate
 
 enum class ValuationType(val displayName: String) {
     VALUATION("Valoración"),
-    CONTRIBUTION("Aportación")
+    CONTRIBUTION("Aportación"),
+    LIQUIDATION("Liquidación")
 }
 
 data class InvestmentValuation(
