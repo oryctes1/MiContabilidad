@@ -17,7 +17,11 @@ object DateNormalizer {
         "dd.MM.yyyy",
         "d.M.yyyy",
         "dd/MM/yy",
+        "d/M/yy",
         "dd-MM-yy",
+        "d-M-yy",
+        "dd.MM.yy",
+        "d.M.yy",
         "yyyyMMdd"
     )
 

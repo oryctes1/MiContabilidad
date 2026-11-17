@@ -31,6 +31,9 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -572,6 +575,7 @@ fun LiquidateInvestmentDialog(
     val context = LocalContext.current
     val dateFormatter = remember { DateTimeFormatter.ofPattern("dd/MM/yyyy") }
     var liquidationDate by remember { mutableStateOf(java.time.LocalDate.now()) }
+    var liquidationDateText by remember { mutableStateOf(java.time.LocalDate.now().format(dateFormatter)) }
     val initialSuggestedValue = item.lastBalance ?: item.totalInvestedCapital ?: item.account.initialAmount ?: BigDecimal.ZERO
     var finalValueText by remember { mutableStateOf(if (initialSuggestedValue > BigDecimal.ZERO) initialSuggestedValue.toPlainString() else "") }
     var notesText by remember { mutableStateOf("") }
@@ -616,16 +620,23 @@ fun LiquidateInvestmentDialog(
 
                 // Selector de Fecha de Liquidación
                 OutlinedTextField(
-                    value = liquidationDate.format(dateFormatter),
-                    onValueChange = {},
-                    readOnly = true,
+                    value = liquidationDateText,
+                    onValueChange = { input ->
+                        liquidationDateText = input
+                        com.oryctes.micontabilidad.domain.normalizer.DateNormalizer.parseDate(input)?.let { parsed ->
+                            liquidationDate = parsed
+                        }
+                    },
                     label = { Text("Fecha de liquidación", style = MaterialTheme.typography.bodySmall) },
+                    placeholder = { Text("dd/mm/aa") },
                     trailingIcon = {
                         IconButton(onClick = {
                             DatePickerDialog(
                                 context,
                                 { _, year, month, dayOfMonth ->
-                                    liquidationDate = java.time.LocalDate.of(year, month + 1, dayOfMonth)
+                                    val picked = java.time.LocalDate.of(year, month + 1, dayOfMonth)
+                                    liquidationDate = picked
+                                    liquidationDateText = picked.format(dateFormatter)
                                 },
                                 liquidationDate.year,
                                 liquidationDate.monthValue - 1,
@@ -635,6 +646,7 @@ fun LiquidateInvestmentDialog(
                             Icon(Icons.Default.CalendarMonth, contentDescription = "Seleccionar fecha")
                         }
                     },
+                    singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
 
@@ -688,6 +700,7 @@ fun LiquidateInvestmentDialog(
                     onValueChange = { notesText = it },
                     label = { Text("Notas / Observaciones (opcional)", style = MaterialTheme.typography.bodySmall) },
                     placeholder = { Text("Ej. Venta total, retenciones...", style = MaterialTheme.typography.bodySmall) },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text, capitalization = KeyboardCapitalization.Sentences),
                     modifier = Modifier.fillMaxWidth(),
                     maxLines = 2
                 )

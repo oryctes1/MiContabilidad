@@ -18,6 +18,10 @@ class NormalizerTest {
         assertEquals(expected, DateNormalizer.parseDate("2026-04-15"))
         assertEquals(expected, DateNormalizer.parseDate("15.04.2026"))
         assertEquals(expected, DateNormalizer.parseDate("15/4/2026"))
+        assertEquals(expected, DateNormalizer.parseDate("15/04/26"))
+        assertEquals(expected, DateNormalizer.parseDate("15/4/26"))
+        assertEquals(expected, DateNormalizer.parseDate("15-4-26"))
+        assertEquals(expected, DateNormalizer.parseDate("15.4.26"))
         assertEquals(expected, DateNormalizer.parseDate("20260415"))
 
         assertNull(DateNormalizer.parseDate(""))

@@ -40,6 +40,9 @@ import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SuggestionChip
@@ -803,6 +806,7 @@ fun AccountFormDialog(
     // Estado para nueva valoración de inversión
     var showAddValuationDialog by remember { mutableStateOf(false) }
     var valuationDateVal by remember { mutableStateOf(LocalDate.now()) }
+    var valuationDateText by remember { mutableStateOf(LocalDate.now().format(dateFormatter)) }
     var valuationValueText by remember { mutableStateOf("") }
     var valuationNotesText by remember { mutableStateOf("") }
     var valuationTypeVal by remember { mutableStateOf(com.oryctes.micontabilidad.domain.model.ValuationType.VALUATION) }
@@ -817,6 +821,7 @@ fun AccountFormDialog(
     var amountText by remember { mutableStateOf(account?.initialAmount?.toPlainString().orEmpty()) }
     var interestRateText by remember { mutableStateOf(account?.interestRate?.toPlainString().orEmpty()) }
     var startDateVal by remember { mutableStateOf(account?.startDate ?: LocalDate.now()) }
+    var startDateText by remember { mutableStateOf((account?.startDate ?: LocalDate.now()).format(dateFormatter)) }
     var termMonthsText by remember { mutableStateOf(account?.termMonths?.toString().orEmpty()) }
     var isManualInterest by remember { mutableStateOf(false) }
     var manualInterestText by remember { mutableStateOf(account?.expectedInterest?.toPlainString().orEmpty()) }
@@ -909,6 +914,7 @@ fun AccountFormDialog(
                         )
                     },
                     singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text, capitalization = KeyboardCapitalization.Sentences),
                     textStyle = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -919,6 +925,7 @@ fun AccountFormDialog(
                     label = { Text("Entidad Bancaria *", style = MaterialTheme.typography.bodySmall) },
                     placeholder = { Text("ej. BBVA, Santander, ING, Openbank...") },
                     singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text, capitalization = KeyboardCapitalization.Sentences),
                     textStyle = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -979,16 +986,23 @@ fun AccountFormDialog(
                         // Selector de fecha de apertura
                         Box(modifier = Modifier.weight(1.2f)) {
                             OutlinedTextField(
-                                value = startDateVal.format(dateFormatter),
-                                onValueChange = {},
-                                readOnly = true,
+                                value = startDateText,
+                                onValueChange = { input ->
+                                    startDateText = input
+                                    com.oryctes.micontabilidad.domain.normalizer.DateNormalizer.parseDate(input)?.let { parsed ->
+                                        startDateVal = parsed
+                                    }
+                                },
                                 label = { Text("Fecha apertura", style = MaterialTheme.typography.bodySmall) },
+                                placeholder = { Text("dd/mm/aa") },
                                 trailingIcon = {
                                     IconButton(onClick = {
                                         DatePickerDialog(
                                             context,
                                             { _, year, month, dayOfMonth ->
-                                                startDateVal = LocalDate.of(year, month + 1, dayOfMonth)
+                                                val picked = LocalDate.of(year, month + 1, dayOfMonth)
+                                                startDateVal = picked
+                                                startDateText = picked.format(dateFormatter)
                                             },
                                             startDateVal.year,
                                             startDateVal.monthValue - 1,
@@ -1094,16 +1108,23 @@ fun AccountFormDialog(
 
                     Box(modifier = Modifier.fillMaxWidth()) {
                         OutlinedTextField(
-                            value = startDateVal.format(dateFormatter),
-                            onValueChange = {},
-                            readOnly = true,
+                            value = startDateText,
+                            onValueChange = { input ->
+                                startDateText = input
+                                com.oryctes.micontabilidad.domain.normalizer.DateNormalizer.parseDate(input)?.let { parsed ->
+                                    startDateVal = parsed
+                                }
+                            },
                             label = { Text("Fecha de inversión", style = MaterialTheme.typography.bodySmall) },
+                            placeholder = { Text("dd/mm/aa") },
                             trailingIcon = {
                                 IconButton(onClick = {
                                     DatePickerDialog(
                                         context,
                                         { _, year, month, dayOfMonth ->
-                                            startDateVal = LocalDate.of(year, month + 1, dayOfMonth)
+                                            val picked = LocalDate.of(year, month + 1, dayOfMonth)
+                                            startDateVal = picked
+                                            startDateText = picked.format(dateFormatter)
                                         },
                                         startDateVal.year,
                                         startDateVal.monthValue - 1,
@@ -1138,7 +1159,9 @@ fun AccountFormDialog(
                             )
                             FilledTonalButton(
                                 onClick = {
-                                    valuationDateVal = LocalDate.now()
+                                    val now = LocalDate.now()
+                                    valuationDateVal = now
+                                    valuationDateText = now.format(dateFormatter)
                                     valuationValueText = ""
                                     valuationNotesText = ""
                                     showAddValuationDialog = true
@@ -1256,6 +1279,7 @@ fun AccountFormDialog(
                     onValueChange = { notes = it },
                     label = { Text("Notas adicionales", style = MaterialTheme.typography.bodySmall) },
                     maxLines = 2,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text, capitalization = KeyboardCapitalization.Sentences),
                     textStyle = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -1336,21 +1360,28 @@ fun AccountFormDialog(
 
                     Box(modifier = Modifier.fillMaxWidth()) {
                         OutlinedTextField(
-                            value = valuationDateVal.format(dateFormatter),
-                            onValueChange = {},
-                            readOnly = true,
+                            value = valuationDateText,
+                            onValueChange = { input ->
+                                valuationDateText = input
+                                com.oryctes.micontabilidad.domain.normalizer.DateNormalizer.parseDate(input)?.let { parsed ->
+                                    valuationDateVal = parsed
+                                }
+                            },
                             label = {
                                 Text(
                                     if (valuationTypeVal == com.oryctes.micontabilidad.domain.model.ValuationType.CONTRIBUTION) "Fecha de aportación *" else "Fecha de valoración *",
                                     style = MaterialTheme.typography.bodySmall
                                 )
                             },
+                            placeholder = { Text("dd/mm/aa") },
                             trailingIcon = {
                                 IconButton(onClick = {
                                     DatePickerDialog(
                                         context,
                                         { _, year, month, dayOfMonth ->
-                                            valuationDateVal = LocalDate.of(year, month + 1, dayOfMonth)
+                                            val picked = LocalDate.of(year, month + 1, dayOfMonth)
+                                            valuationDateVal = picked
+                                            valuationDateText = picked.format(dateFormatter)
                                         },
                                         valuationDateVal.year,
                                         valuationDateVal.monthValue - 1,
@@ -1391,6 +1422,7 @@ fun AccountFormDialog(
                             Text(if (valuationTypeVal == com.oryctes.micontabilidad.domain.model.ValuationType.CONTRIBUTION) "ej. Aportación periódica anual" else "ej. Cierre mensual, subida bolsa...")
                         },
                         maxLines = 2,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text, capitalization = KeyboardCapitalization.Sentences),
                         textStyle = MaterialTheme.typography.bodyMedium,
                         modifier = Modifier.fillMaxWidth()
                     )
