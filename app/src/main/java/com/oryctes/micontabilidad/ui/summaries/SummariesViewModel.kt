@@ -100,7 +100,7 @@ class SummariesViewModel(
         } else null
 
         val investmentHistoryPoints = if (isInvestment) {
-            val shortDateFmt = java.time.format.DateTimeFormatter.ofPattern("dd/MM")
+            val shortDateFmt = java.time.format.DateTimeFormatter.ofPattern("MM/yy")
             val fullDateFmt = java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy")
             val accVals = valuations.filter { it.accountId == selectedAccount.id }
                 .sortedWith(compareBy<InvestmentValuation> { it.date }.thenBy { it.id })
