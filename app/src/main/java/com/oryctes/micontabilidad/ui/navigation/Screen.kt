@@ -6,12 +6,14 @@ import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.TrendingUp
 import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.ui.graphics.vector.ImageVector
 
 sealed class Screen(val route: String, val title: String, val icon: ImageVector) {
     data object Dashboard : Screen("dashboard", "Inicio", Icons.Default.Dashboard)
     data object Accounts : Screen("accounts", "Cuentas", Icons.Default.AccountBalance)
+    data object Investments : Screen("investments", "Inversiones", Icons.Default.TrendingUp)
     data object Import : Screen("import", "Importar", Icons.Default.UploadFile)
     data object Transactions : Screen("transactions", "Movimientos", Icons.Default.List)
     data object Summaries : Screen("summaries", "Informes", Icons.Default.BarChart)
@@ -22,7 +24,7 @@ sealed class Screen(val route: String, val title: String, val icon: ImageVector)
         val bottomNavItems = listOf(
             Dashboard,
             Accounts,
-            Import,
+            Investments,
             Transactions,
             Summaries
         )

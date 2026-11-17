@@ -10,6 +10,7 @@ import com.oryctes.micontabilidad.ui.accounts.AccountsScreen
 import com.oryctes.micontabilidad.ui.categories.CategoriesScreen
 import com.oryctes.micontabilidad.ui.dashboard.DashboardScreen
 import com.oryctes.micontabilidad.ui.import.ImportScreen
+import com.oryctes.micontabilidad.ui.investments.InvestmentsScreen
 import com.oryctes.micontabilidad.ui.settings.SettingsScreen
 import com.oryctes.micontabilidad.ui.summaries.SummariesScreen
 import com.oryctes.micontabilidad.ui.transactions.TransactionsScreen
@@ -75,6 +76,19 @@ fun NavGraph(
         }
         composable(Screen.Accounts.route) {
             AccountsScreen(
+                onNavigateToAccountTransactions = { accountId ->
+                    navController.navigate("${Screen.Transactions.route}?accountId=$accountId") {
+                        popUpTo(navController.graph.findStartDestination().id) {
+                            saveState = true
+                        }
+                        launchSingleTop = true
+                        restoreState = false
+                    }
+                }
+            )
+        }
+        composable(Screen.Investments.route) {
+            InvestmentsScreen(
                 onNavigateToAccountTransactions = { accountId ->
                     navController.navigate("${Screen.Transactions.route}?accountId=$accountId") {
                         popUpTo(navController.graph.findStartDestination().id) {

@@ -86,32 +86,7 @@ fun AccountsScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Cuentas", fontWeight = FontWeight.Bold) },
-                actions = {
-                    Column(
-                        horizontalAlignment = Alignment.End,
-                        modifier = Modifier.padding(end = 8.dp)
-                    ) {
-                        Text(
-                            text = "Productos vencidos",
-                            style = MaterialTheme.typography.bodySmall,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier
-                                .clickable { showExpiredDialog = true }
-                                .padding(vertical = 2.dp, horizontal = 4.dp)
-                        )
-                        Text(
-                            text = "Inversiones",
-                            style = MaterialTheme.typography.bodySmall,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier
-                                .clickable { showInvestmentsDialog = true }
-                                .padding(vertical = 2.dp, horizontal = 4.dp)
-                        )
-                    }
-                }
+                title = { Text("Cuentas", fontWeight = FontWeight.Bold) }
             )
         },
         floatingActionButton = {

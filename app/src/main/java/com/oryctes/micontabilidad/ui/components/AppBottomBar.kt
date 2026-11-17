@@ -56,11 +56,12 @@ fun AppBottomBar(
             Screen.bottomNavItems.forEach { screen ->
                 val screenBaseRoute = screen.route.substringBefore("?")
                 val isSelected = currentBaseRoute == screenBaseRoute
-                // Asignamos más peso relativo a "Movimientos" (1.3f) y menos a los cortos (0.9f)
+                // Asignamos más peso relativo a los textos más largos ("Movimientos", "Inversiones")
                 val itemWeight = when (screen.route) {
-                    Screen.Transactions.route -> 1.35f
-                    Screen.Dashboard.route, Screen.Accounts.route, Screen.Import.route -> 0.90f
-                    else -> 0.95f
+                    Screen.Transactions.route -> 1.25f
+                    Screen.Investments.route -> 1.15f
+                    Screen.Dashboard.route, Screen.Accounts.route -> 0.85f
+                    else -> 0.90f
                 }
 
                 val iconTint by animateColorAsState(
