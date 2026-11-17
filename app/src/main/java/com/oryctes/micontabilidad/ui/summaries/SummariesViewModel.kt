@@ -105,16 +105,43 @@ class SummariesViewModel(
             val accVals = valuations.filter { it.accountId == selectedAccount.id }
                 .sortedWith(compareBy<InvestmentValuation> { it.date }.thenBy { it.id })
 
-            if (accVals.isNotEmpty()) {
-                accVals.map { v ->
+            val points = mutableListOf<com.oryctes.micontabilidad.ui.components.BalanceDataPoint>()
+
+            // 1. Añadir el valor inicial de la inversión como primer punto cronológico si existe initialAmount
+            val initAmount = selectedAccount.initialAmount
+            val initDate = selectedAccount.startDate
+            if (initAmount != null && initAmount > BigDecimal.ZERO) {
+                val pointDate = initDate ?: accVals.firstOrNull()?.date ?: LocalDate.now()
+                // Si la primera valoración registrada no es exactamente en esa misma fecha con el mismo valor,
+                // o si la fecha de inicio es anterior a la primera valoración:
+                val firstVal = accVals.firstOrNull()
+                val shouldIncludeInitial = firstVal == null || pointDate.isBefore(firstVal.date) ||
+                        (pointDate == firstVal.date && initAmount.compareTo(firstVal.value) != 0)
+
+                if (shouldIncludeInitial) {
+                    points.add(
+                        com.oryctes.micontabilidad.ui.components.BalanceDataPoint(
+                            label = pointDate.format(shortDateFmt),
+                            fullDate = "${pointDate.format(fullDateFmt)} (Valor inicial)",
+                            balance = initAmount
+                        )
+                    )
+                }
+            }
+
+            // 2. Añadir todas las valoraciones y aportaciones históricas registradas
+            accVals.forEach { v ->
+                points.add(
                     com.oryctes.micontabilidad.ui.components.BalanceDataPoint(
                         label = v.date.format(shortDateFmt),
                         fullDate = "${v.date.format(fullDateFmt)} (${v.type.displayName})",
                         balance = v.value
                     )
-                }
-            } else {
-                // Si no hay valoraciones históricas pero tiene valor inicial
+                )
+            }
+
+            // Si points sigue vacío (sin initialAmount ni valoraciones), usar último balance conocido
+            if (points.isEmpty()) {
                 val initVal = selectedInvestmentInfo?.lastBalance
                     ?: selectedAccount.initialAmount
                     ?: BigDecimal.ZERO
@@ -126,6 +153,8 @@ class SummariesViewModel(
                         balance = initVal
                     )
                 )
+            } else {
+                points
             }
         } else {
             emptyList()
