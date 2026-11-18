@@ -344,6 +344,15 @@ fun SummariesScreen(
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        // Primer chip: Todo el año
+                        item {
+                            FilterChip(
+                                selected = uiState.selectedMonth == null,
+                                onClick = { viewModel.setMonth(null) },
+                                label = { Text("Año ${uiState.selectedYear}") }
+                            )
+                        }
+                        // Chips de cada mes
                         items(12) { idx ->
                             val m = idx + 1
                             FilterChip(
@@ -355,12 +364,18 @@ fun SummariesScreen(
                     }
                 }
 
-                // Donut chart de categorías del mes seleccionado
+                // Donut chart de categorías del período seleccionado (mes o año completo)
                 item {
+                    val selMonth = uiState.selectedMonth
+                    val periodLabel = if (selMonth != null) {
+                        "Gastos en ${monthNames[selMonth - 1]} ${uiState.selectedYear}"
+                    } else {
+                        "Gastos del Año ${uiState.selectedYear}"
+                    }
                     Card(modifier = Modifier.fillMaxWidth()) {
                         Column(modifier = Modifier.padding(16.dp)) {
                             Text(
-                                text = "Gastos en ${monthNames[uiState.selectedMonth - 1]} ${uiState.selectedYear}",
+                                text = periodLabel,
                                 style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.SemiBold
                             )

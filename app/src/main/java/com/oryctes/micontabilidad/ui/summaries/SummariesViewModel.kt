@@ -48,7 +48,7 @@ data class CategoryOption(
 
 data class SummariesUiState(
     val selectedYear: Int = LocalDate.now().year,
-    val selectedMonth: Int = LocalDate.now().monthValue,
+    val selectedMonth: Int? = null, // null representa el año completo ("Todo el año")
     val selectedAccountId: Long? = null,
     val accounts: List<Account> = emptyList(),
     val monthlySummaries: List<MonthlySummary> = emptyList(),
@@ -67,7 +67,7 @@ private data class DataQuad<A, B, C, D>(val first: A, val second: B, val third: 
 
 private data class SelectionState(
     val year: Int,
-    val month: Int,
+    val month: Int?,
     val accountId: Long?,
     val categoryOptionId: String?
 )
@@ -79,12 +79,12 @@ class SummariesViewModel(
 ) : ViewModel() {
 
     private val _selectedYear = MutableStateFlow(LocalDate.now().year)
-    private val _selectedMonth = MutableStateFlow(LocalDate.now().monthValue)
+    private val _selectedMonth = MutableStateFlow<Int?>(null) // Por defecto: año completo
     private val _selectedAccountId = MutableStateFlow<Long?>(null)
     private val _selectedCategoryOptionId = MutableStateFlow<String?>(null)
 
     val selectedYear: StateFlow<Int> = _selectedYear.asStateFlow()
-    val selectedMonth: StateFlow<Int> = _selectedMonth.asStateFlow()
+    val selectedMonth: StateFlow<Int?> = _selectedMonth.asStateFlow()
     val selectedAccountId: StateFlow<Long?> = _selectedAccountId.asStateFlow()
     val selectedCategoryOptionId: StateFlow<String?> = _selectedCategoryOptionId.asStateFlow()
 
@@ -94,11 +94,6 @@ class SummariesViewModel(
 
     private val monthlySummariesFlow = selectionState.flatMapLatest { sel ->
         transactionRepository.getMonthlySummaries(sel.accountId, sel.year)
-    }
-
-    private val categoryExpensesFlow = selectionState.flatMapLatest { sel ->
-        val ym = YearMonth.of(sel.year, sel.month)
-        transactionRepository.getCategorySummaries(sel.accountId, ym)
     }
 
     private val accountDataFlow = combine(
@@ -113,9 +108,8 @@ class SummariesViewModel(
     val uiState: StateFlow<SummariesUiState> = combine(
         selectionState,
         accountDataFlow,
-        monthlySummariesFlow,
-        categoryExpensesFlow
-    ) { sel, dataQuad, monthly, categories ->
+        monthlySummariesFlow
+    ) { sel, dataQuad, monthly ->
         val (accounts, allTxs, valuations, dbCategories) = dataQuad
         val eligibleAccounts = accounts.filter {
             (!it.isArchived || it.type == AccountType.INVESTMENT) && it.type != AccountType.DEPOSIT
@@ -214,38 +208,88 @@ class SummariesViewModel(
         val yearExpense = monthly.fold(BigDecimal.ZERO) { acc, m -> acc.add(m.totalExpense) }
         val yearSavings = yearIncome.subtract(yearExpense)
 
-        // Agrupar en la categoría Hogar también agua, luz, gas y comunicaciones exclusivamente para informes
-        val chartCategories = categories.groupHogarAndUtilities()
-
-        // Filtrar transacciones del año y de la cuenta seleccionada (si aplica)
-        val yearExpenseTxs = allTxs.filter { tx ->
+        // Transacciones del año de cuentas seleccionadas (o todas)
+        val allYearTxs = allTxs.filter { tx ->
             !tx.isExcludedFromTotals &&
-            tx.amount < BigDecimal.ZERO &&
             tx.operationDate.year == sel.year &&
             (sel.accountId == null || tx.accountId == sel.accountId)
         }
+        val yearExpenseTxs = allYearTxs.filter { it.amount < BigDecimal.ZERO }
 
-        // Construir opciones de categorías disponibles
+        // Calcular desglose de categorías según el mes seleccionado o todo el año
+        val targetExpenseTxs = if (sel.month == null) {
+            yearExpenseTxs
+        } else {
+            yearExpenseTxs.filter { it.operationDate.monthValue == sel.month }
+        }
+
+        val totalPeriodExpense = targetExpenseTxs.fold(BigDecimal.ZERO) { acc, t -> acc.add(t.amount.abs()) }
         val categoryMap = dbCategories.associateBy { it.id }
+
+        val calculatedCategories = if (totalPeriodExpense > BigDecimal.ZERO) {
+            targetExpenseTxs.groupBy { it.categoryId }.map { (catId, txs) ->
+                val catTotal = txs.fold(BigDecimal.ZERO) { acc, t -> acc.add(t.amount.abs()) }
+                val cat = catId?.let { categoryMap[it] }
+                val name = cat?.name ?: "Sin categoría / Otros"
+                val color = cat?.colorHex ?: "#9E9E9E"
+                val pct = catTotal.divide(totalPeriodExpense, 4, java.math.RoundingMode.HALF_UP).toFloat() * 100f
+                CategorySummary(
+                    categoryName = name,
+                    colorHex = color,
+                    totalAmount = catTotal,
+                    percentage = pct
+                )
+            }.sortedByDescending { it.totalAmount }
+        } else {
+            emptyList()
+        }
+
+        // Agrupar en la categoría Hogar también agua, luz, gas y comunicaciones exclusivamente para informes
+        val chartCategories = calculatedCategories.groupHogarAndUtilities()
+
+        // Construir opciones de categorías para el carrusel de Desglose por Categoría:
+        // Categorías de Gasto: orden decreciente de gasto total anual.
+        // Categorías de Ingreso: al final, en orden decreciente de importe anual.
         val hasHogarOrUtility = dbCategories.any { isHogarOrUtility(it.name) }
         val hogarCat = dbCategories.find { it.name.trim().equals("hogar", ignoreCase = true) }
         val hogarColorHex = hogarCat?.colorHex ?: "#6D4C41"
 
-        val options = mutableListOf<CategoryOption>()
+        // Calcular total anual de cada categoría
+        val expenseOptionsWithAmount = mutableListOf<Pair<CategoryOption, BigDecimal>>()
         if (hasHogarOrUtility) {
-            options.add(CategoryOption("HOGAR_GROUP", "Hogar (y suministros)", hogarColorHex))
+            val hogarYearTotal = yearExpenseTxs.filter { tx ->
+                val catName = tx.categoryId?.let { categoryMap[it]?.name } ?: ""
+                isHogarOrUtility(catName)
+            }.fold(BigDecimal.ZERO) { acc, tx -> acc.add(tx.amount.abs()) }
+            expenseOptionsWithAmount.add(CategoryOption("HOGAR_GROUP", "Hogar (y suministros)", hogarColorHex) to hogarYearTotal)
         }
 
-        // Categorías individuales excepto las agrupadas en Hogar
-        dbCategories.filter { !isHogarOrUtility(it.name) }.forEach { cat ->
-            options.add(CategoryOption("CAT_${cat.id}", cat.name, cat.colorHex))
+        dbCategories.filter { it.type != com.oryctes.micontabilidad.domain.model.CategoryType.INCOME && !isHogarOrUtility(it.name) }.forEach { cat ->
+            val catYearTotal = yearExpenseTxs.filter { it.categoryId == cat.id }
+                .fold(BigDecimal.ZERO) { acc, tx -> acc.add(tx.amount.abs()) }
+            expenseOptionsWithAmount.add(CategoryOption("CAT_${cat.id}", cat.name, cat.colorHex) to catYearTotal)
         }
 
-        // Opción sin categoría si existen movimientos sin categoría en el año
-        val hasUncategorized = yearExpenseTxs.any { it.categoryId == null }
-        if (hasUncategorized) {
-            options.add(CategoryOption("UNCATEGORIZED", "Sin categoría / Otros", "#9E9E9E"))
+        val uncategorizedYearTotal = yearExpenseTxs.filter { it.categoryId == null }
+            .fold(BigDecimal.ZERO) { acc, tx -> acc.add(tx.amount.abs()) }
+        if (uncategorizedYearTotal > BigDecimal.ZERO) {
+            expenseOptionsWithAmount.add(CategoryOption("UNCATEGORIZED", "Sin categoría / Otros", "#9E9E9E") to uncategorizedYearTotal)
         }
+
+        // Ordenar categorías de gasto en orden decreciente de gasto anual
+        val sortedExpenseOptions = expenseOptionsWithAmount.sortedByDescending { it.second }.map { it.first }
+
+        // Categorías de ingreso: calculamos el total de ingresos del año y ordenamos en orden decreciente
+        val yearIncomeTxs = allYearTxs.filter { it.amount > BigDecimal.ZERO }
+        val incomeCategories = dbCategories.filter { it.type == com.oryctes.micontabilidad.domain.model.CategoryType.INCOME }
+        val incomeOptionsWithAmount = incomeCategories.map { cat ->
+            val catIncomeTotal = yearIncomeTxs.filter { it.categoryId == cat.id }
+                .fold(BigDecimal.ZERO) { acc, tx -> acc.add(tx.amount) }
+            CategoryOption("CAT_${cat.id}", cat.name, cat.colorHex) to catIncomeTotal
+        }
+        val sortedIncomeOptions = incomeOptionsWithAmount.sortedByDescending { it.second }.map { it.first }
+
+        val options = sortedExpenseOptions + sortedIncomeOptions
 
         // Seleccionar la categoría activa (por defecto la primera disponible o la seleccionada previamente)
         val activeCategoryOptionId = if (options.any { it.id == sel.categoryOptionId }) {
@@ -254,9 +298,18 @@ class SummariesViewModel(
             options.firstOrNull()?.id
         }
 
-        // Calcular gastos mensuales (1..12) para la categoría activa
+        // Calcular importes mensuales (1..12) para la categoría activa
+        val isSelectedOptionIncome = activeCategoryOptionId?.let { optId ->
+            if (optId.startsWith("CAT_")) {
+                val catId = optId.removePrefix("CAT_").toLongOrNull()
+                categoryMap[catId]?.type == com.oryctes.micontabilidad.domain.model.CategoryType.INCOME
+            } else false
+        } ?: false
+
+        val targetYearTxsForCategory = if (isSelectedOptionIncome) allYearTxs.filter { it.amount > BigDecimal.ZERO } else yearExpenseTxs
+
         val monthlyExpensesForSelectedCategory = if (activeCategoryOptionId != null) {
-            val matchingTxs = yearExpenseTxs.filter { tx ->
+            val matchingTxs = targetYearTxsForCategory.filter { tx ->
                 when {
                     activeCategoryOptionId == "HOGAR_GROUP" -> {
                         val catName = tx.categoryId?.let { categoryMap[it]?.name } ?: ""
@@ -306,7 +359,7 @@ class SummariesViewModel(
         _selectedYear.value = year
     }
 
-    fun setMonth(month: Int) {
+    fun setMonth(month: Int?) {
         _selectedMonth.value = month
     }
 
