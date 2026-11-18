@@ -130,7 +130,7 @@ fun InvestmentsScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column {
+                    Column(modifier = Modifier.padding(end = 12.dp)) {
                         Text(
                             text = "Total invertido",
                             style = MaterialTheme.typography.labelMedium,
@@ -144,20 +144,36 @@ fun InvestmentsScreen(
                             color = MaterialTheme.colorScheme.onPrimaryContainer
                         )
                     }
+
+                    val invested = uiState.totalInvestedAmount
+                    val valuation = uiState.totalValuationAmount
+                    val profitLossPct = if (invested > BigDecimal.ZERO) {
+                        valuation.subtract(invested)
+                            .multiply(BigDecimal(100))
+                            .divide(invested, 2, RoundingMode.HALF_UP)
+                    } else null
+
                     Column(
+                        modifier = Modifier.weight(1f),
                         horizontalAlignment = Alignment.End
                     ) {
                         Text(
                             text = "${uiState.activeInvestments.size} productos en vigor",
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.Medium,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.End,
                             color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
                         )
                         Spacer(modifier = Modifier.height(2.dp))
+                        val pctText = if (profitLossPct != null) {
+                            val sign = if (profitLossPct >= BigDecimal.ZERO) "+" else ""
+                            " ($sign${profitLossPct.toPlainString()}%)"
+                        } else ""
                         Text(
-                            text = "Última valoración conocida: ${uiState.totalValuationAmount.toPlainString()} €",
+                            text = "Última valoración: ${valuation.toPlainString()} €$pctText",
                             style = MaterialTheme.typography.bodySmall,
                             fontWeight = FontWeight.SemiBold,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.End,
                             color = MaterialTheme.colorScheme.primary
                         )
                     }
