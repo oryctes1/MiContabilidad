@@ -38,6 +38,7 @@ import com.oryctes.micontabilidad.domain.model.AccountType
 import com.oryctes.micontabilidad.domain.model.AccountWithBalance
 import com.oryctes.micontabilidad.ui.components.BalanceEvolutionChart
 import com.oryctes.micontabilidad.ui.components.CategoryDonutChart
+import com.oryctes.micontabilidad.ui.components.CategoryMonthlyExpenseBarChart
 import com.oryctes.micontabilidad.ui.components.MonthlyBarChart
 import com.oryctes.micontabilidad.ui.theme.ExpenseRed
 import com.oryctes.micontabilidad.ui.theme.IncomeGreen
@@ -334,10 +335,10 @@ fun SummariesScreen(
                     }
                 }
 
-                // Selector de Mes para detalle de gastos por categoría
+                // Selector de Mes para detalle de gastos por categoría (Desglose por Meses)
                 item {
                     Text(
-                        text = "Desglose de Gastos por Categoría",
+                        text = "Desglose de Gastos por Meses",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )
@@ -367,7 +368,57 @@ fun SummariesScreen(
                             CategoryDonutChart(categories = uiState.categoryExpenses)
                         }
                     }
-                    Spacer(modifier = Modifier.height(20.dp))
+                }
+
+                // Selector y evolución de Gastos por Categoría
+                if (uiState.availableCategoryOptions.isNotEmpty()) {
+                    item {
+                        Text(
+                            text = "Desglose de Gastos por Categoría",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            items(uiState.availableCategoryOptions) { opt ->
+                                FilterChip(
+                                    selected = uiState.selectedCategoryOptionId == opt.id,
+                                    onClick = { viewModel.setCategoryOptionId(opt.id) },
+                                    label = { Text(opt.name) }
+                                )
+                            }
+                        }
+                    }
+
+                    // Gráfico de evolución de gastos de la categoría a lo largo de los meses del año
+                    item {
+                        val activeOption = uiState.availableCategoryOptions.find { it.id == uiState.selectedCategoryOptionId }
+                            ?: uiState.availableCategoryOptions.firstOrNull()
+                        val catColor = activeOption?.let {
+                            runCatching { androidx.compose.ui.graphics.Color(android.graphics.Color.parseColor(it.colorHex)) }.getOrNull()
+                        } ?: MaterialTheme.colorScheme.primary
+
+                        Card(modifier = Modifier.fillMaxWidth()) {
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Text(
+                                    text = "Evolución mensual de ${activeOption?.name ?: "Categoría"} (${uiState.selectedYear})",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Spacer(modifier = Modifier.height(12.dp))
+                                CategoryMonthlyExpenseBarChart(
+                                    monthlyAmounts = uiState.selectedCategoryMonthlyExpenses,
+                                    barColor = catColor,
+                                    year = uiState.selectedYear
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(20.dp))
+                    }
+                } else {
+                    item {
+                        Spacer(modifier = Modifier.height(20.dp))
+                    }
                 }
             }
         }

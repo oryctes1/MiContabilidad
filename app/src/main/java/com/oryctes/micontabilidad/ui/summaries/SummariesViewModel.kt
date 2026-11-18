@@ -25,6 +25,27 @@ import java.math.BigDecimal
 import java.time.LocalDate
 import java.time.YearMonth
 
+private fun isHogarOrUtility(name: String): Boolean {
+    val n = name.trim().lowercase()
+    return n == "hogar" ||
+           n == "agua" ||
+           n == "luz" ||
+           n == "gas" ||
+           n == "comunicaciones" ||
+           n == "comunicación" ||
+           n == "comunicacion" ||
+           n == "agua, luz y gas" ||
+           n == "agua, luz, gas" ||
+           n == "luz, gas y agua" ||
+           n == "suministros"
+}
+
+data class CategoryOption(
+    val id: String, // "CAT_id" o "HOGAR_GROUP" o "UNCATEGORIZED"
+    val name: String,
+    val colorHex: String
+)
+
 data class SummariesUiState(
     val selectedYear: Int = LocalDate.now().year,
     val selectedMonth: Int = LocalDate.now().monthValue,
@@ -36,13 +57,19 @@ data class SummariesUiState(
     val totalYearExpense: BigDecimal = BigDecimal.ZERO,
     val totalYearSavings: BigDecimal = BigDecimal.ZERO,
     val selectedInvestmentInfo: AccountWithBalance? = null,
-    val investmentHistoryPoints: List<com.oryctes.micontabilidad.ui.components.BalanceDataPoint> = emptyList()
+    val investmentHistoryPoints: List<com.oryctes.micontabilidad.ui.components.BalanceDataPoint> = emptyList(),
+    val availableCategoryOptions: List<CategoryOption> = emptyList(),
+    val selectedCategoryOptionId: String? = null,
+    val selectedCategoryMonthlyExpenses: List<BigDecimal> = List(12) { BigDecimal.ZERO }
 )
+
+private data class DataQuad<A, B, C, D>(val first: A, val second: B, val third: C, val fourth: D)
 
 private data class SelectionState(
     val year: Int,
     val month: Int,
-    val accountId: Long?
+    val accountId: Long?,
+    val categoryOptionId: String?
 )
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -54,13 +81,15 @@ class SummariesViewModel(
     private val _selectedYear = MutableStateFlow(LocalDate.now().year)
     private val _selectedMonth = MutableStateFlow(LocalDate.now().monthValue)
     private val _selectedAccountId = MutableStateFlow<Long?>(null)
+    private val _selectedCategoryOptionId = MutableStateFlow<String?>(null)
 
     val selectedYear: StateFlow<Int> = _selectedYear.asStateFlow()
     val selectedMonth: StateFlow<Int> = _selectedMonth.asStateFlow()
     val selectedAccountId: StateFlow<Long?> = _selectedAccountId.asStateFlow()
+    val selectedCategoryOptionId: StateFlow<String?> = _selectedCategoryOptionId.asStateFlow()
 
-    private val selectionState = combine(_selectedYear, _selectedMonth, _selectedAccountId) { year, month, accId ->
-        SelectionState(year, month, accId)
+    private val selectionState = combine(_selectedYear, _selectedMonth, _selectedAccountId, _selectedCategoryOptionId) { year, month, accId, catOptId ->
+        SelectionState(year, month, accId, catOptId)
     }
 
     private val monthlySummariesFlow = selectionState.flatMapLatest { sel ->
@@ -75,9 +104,10 @@ class SummariesViewModel(
     private val accountDataFlow = combine(
         accountRepository.getAllAccounts(),
         transactionRepository.getFilteredTransactions(null, null, null, null),
-        accountRepository.getAllInvestmentValuations()
-    ) { accounts, allTxs, valuations ->
-        Triple(accounts, allTxs, valuations)
+        accountRepository.getAllInvestmentValuations(),
+        transactionRepository.getCategories()
+    ) { accounts, allTxs, valuations, dbCategories ->
+        DataQuad(accounts, allTxs, valuations, dbCategories)
     }
 
     val uiState: StateFlow<SummariesUiState> = combine(
@@ -85,7 +115,8 @@ class SummariesViewModel(
         accountDataFlow,
         monthlySummariesFlow,
         categoryExpensesFlow
-    ) { sel, (accounts, allTxs, valuations), monthly, categories ->
+    ) { sel, dataQuad, monthly, categories ->
+        val (accounts, allTxs, valuations, dbCategories) = dataQuad
         val eligibleAccounts = accounts.filter {
             (!it.isArchived || it.type == AccountType.INVESTMENT) && it.type != AccountType.DEPOSIT
         }
@@ -186,6 +217,69 @@ class SummariesViewModel(
         // Agrupar en la categoría Hogar también agua, luz, gas y comunicaciones exclusivamente para informes
         val chartCategories = categories.groupHogarAndUtilities()
 
+        // Filtrar transacciones del año y de la cuenta seleccionada (si aplica)
+        val yearExpenseTxs = allTxs.filter { tx ->
+            !tx.isExcludedFromTotals &&
+            tx.amount < BigDecimal.ZERO &&
+            tx.operationDate.year == sel.year &&
+            (sel.accountId == null || tx.accountId == sel.accountId)
+        }
+
+        // Construir opciones de categorías disponibles
+        val categoryMap = dbCategories.associateBy { it.id }
+        val hasHogarOrUtility = dbCategories.any { isHogarOrUtility(it.name) }
+        val hogarCat = dbCategories.find { it.name.trim().equals("hogar", ignoreCase = true) }
+        val hogarColorHex = hogarCat?.colorHex ?: "#6D4C41"
+
+        val options = mutableListOf<CategoryOption>()
+        if (hasHogarOrUtility) {
+            options.add(CategoryOption("HOGAR_GROUP", "Hogar (y suministros)", hogarColorHex))
+        }
+
+        // Categorías individuales excepto las agrupadas en Hogar
+        dbCategories.filter { !isHogarOrUtility(it.name) }.forEach { cat ->
+            options.add(CategoryOption("CAT_${cat.id}", cat.name, cat.colorHex))
+        }
+
+        // Opción sin categoría si existen movimientos sin categoría en el año
+        val hasUncategorized = yearExpenseTxs.any { it.categoryId == null }
+        if (hasUncategorized) {
+            options.add(CategoryOption("UNCATEGORIZED", "Sin categoría / Otros", "#9E9E9E"))
+        }
+
+        // Seleccionar la categoría activa (por defecto la primera disponible o la seleccionada previamente)
+        val activeCategoryOptionId = if (options.any { it.id == sel.categoryOptionId }) {
+            sel.categoryOptionId
+        } else {
+            options.firstOrNull()?.id
+        }
+
+        // Calcular gastos mensuales (1..12) para la categoría activa
+        val monthlyExpensesForSelectedCategory = if (activeCategoryOptionId != null) {
+            val matchingTxs = yearExpenseTxs.filter { tx ->
+                when {
+                    activeCategoryOptionId == "HOGAR_GROUP" -> {
+                        val catName = tx.categoryId?.let { categoryMap[it]?.name } ?: ""
+                        isHogarOrUtility(catName)
+                    }
+                    activeCategoryOptionId.startsWith("CAT_") -> {
+                        val targetCatId = activeCategoryOptionId.removePrefix("CAT_").toLongOrNull()
+                        tx.categoryId == targetCatId
+                    }
+                    activeCategoryOptionId == "UNCATEGORIZED" -> tx.categoryId == null
+                    else -> false
+                }
+            }
+
+            val byMonth = matchingTxs.groupBy { it.operationDate.monthValue }
+            (1..12).map { m ->
+                val txsInMonth = byMonth[m] ?: emptyList()
+                txsInMonth.fold(BigDecimal.ZERO) { acc, tx -> acc.add(tx.amount.abs()) }
+            }
+        } else {
+            List(12) { BigDecimal.ZERO }
+        }
+
         SummariesUiState(
             selectedYear = sel.year,
             selectedMonth = sel.month,
@@ -197,7 +291,10 @@ class SummariesViewModel(
             totalYearExpense = yearExpense,
             totalYearSavings = yearSavings,
             selectedInvestmentInfo = selectedInvestmentInfo,
-            investmentHistoryPoints = investmentHistoryPoints
+            investmentHistoryPoints = investmentHistoryPoints,
+            availableCategoryOptions = options,
+            selectedCategoryOptionId = activeCategoryOptionId,
+            selectedCategoryMonthlyExpenses = monthlyExpensesForSelectedCategory
         )
     }.stateIn(
         scope = viewModelScope,
@@ -215,6 +312,10 @@ class SummariesViewModel(
 
     fun setAccountId(accountId: Long?) {
         _selectedAccountId.value = accountId
+    }
+
+    fun setCategoryOptionId(categoryOptionId: String) {
+        _selectedCategoryOptionId.value = categoryOptionId
     }
 }
 
