@@ -195,6 +195,7 @@ fun ImportScreen(
                             onToggleExclude = { viewModel.toggleExcludeItem(it) },
                             onAcceptDuplicate = { viewModel.acceptDuplicate(it) },
                             onAcceptAllDuplicates = { viewModel.acceptAllDuplicates() },
+                            onDismissAllDuplicates = { viewModel.dismissAllDuplicates() },
                             onUpdateItem = { rowIdx, date, concept, amount, balance ->
                                 viewModel.updateInspectedItem(rowIdx, date, concept, amount, balance)
                             },
@@ -1446,6 +1447,7 @@ fun ValidationSummaryStep(
     onToggleExclude: (Int) -> Unit,
     onAcceptDuplicate: (Int) -> Unit,
     onAcceptAllDuplicates: () -> Unit,
+    onDismissAllDuplicates: () -> Unit,
     onUpdateItem: (rowIdx: Int, date: java.time.LocalDate?, concept: String, amount: java.math.BigDecimal?, balance: java.math.BigDecimal?) -> Unit,
     onBackToMapping: () -> Unit,
     onConfirmImport: () -> Unit
@@ -1506,30 +1508,49 @@ fun ValidationSummaryStep(
         val duplicateItems = summary.inspectedItems.filter { it.isPossibleDuplicate && !it.isExcluded && !it.isDuplicateAccepted }
         if (duplicateItems.isNotEmpty()) {
             item {
-                Row(
+                Column(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Column(modifier = Modifier.weight(1f)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         Text(
                             text = "🔁 Posibles duplicados detectados (${duplicateItems.size})",
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.Bold,
                             color = WarningOrange
                         )
-                        Text(
-                            text = "Movimientos con igual importe y fecha próxima. Pulsa Aceptar si son correctos, Desestimar para omitirlos o Editar:",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
                     }
-                    if (duplicateItems.size > 1) {
-                        Button(
-                            onClick = onAcceptAllDuplicates,
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                    Text(
+                        text = "Movimientos con igual importe y fecha próxima. Pulsa Aceptar si son correctos, Desestimar para omitirlos o Editar:",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        OutlinedButton(
+                            onClick = onDismissAllDuplicates,
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                contentColor = MaterialTheme.colorScheme.error
+                            )
                         ) {
-                            Text("Aceptar todos")
+                            Text("Desestimar todos")
+                        }
+                        if (duplicateItems.size > 1) {
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Button(
+                                onClick = onAcceptAllDuplicates,
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                            ) {
+                                Text("Aceptar todos")
+                            }
                         }
                     }
                 }

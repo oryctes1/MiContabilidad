@@ -449,7 +449,7 @@ class ImportViewModel(
     fun acceptAllDuplicates() {
         val currentSummary = _uiState.value.validationSummary ?: return
         val updatedList = currentSummary.inspectedItems.map { item ->
-            if (item.isPossibleDuplicate) {
+            if (item.isPossibleDuplicate && !item.isExcluded) {
                 item.copy(
                     isPossibleDuplicate = false,
                     isDuplicateAccepted = true,
@@ -462,6 +462,44 @@ class ImportViewModel(
             validationSummary = currentSummary.copy(
                 inspectedItems = updatedList,
                 possibleDuplicateCount = 0
+            )
+        )
+    }
+
+    fun dismissAllDuplicates() {
+        val currentSummary = _uiState.value.validationSummary ?: return
+        val updatedList = currentSummary.inspectedItems.map { item ->
+            if (item.isPossibleDuplicate && !item.isExcluded && !item.isDuplicateAccepted) {
+                item.copy(isExcluded = true)
+            } else item
+        }
+
+        val validCount = updatedList.count { !it.isDoubtful && !it.isExcluded }
+        val excludedCount = updatedList.count { it.isExcluded }
+        val duplicateCount = updatedList.count { it.isPossibleDuplicate && !it.isExcluded && !it.isDuplicateAccepted }
+
+        var totalAmount = java.math.BigDecimal.ZERO
+        var balSum = java.math.BigDecimal.ZERO
+        var balCount = 0
+
+        updatedList.filter { !it.isExcluded && !it.isDoubtful }.forEach {
+            it.amount?.let { a -> totalAmount = totalAmount.add(a) }
+            it.balance?.let { b ->
+                balSum = balSum.add(b)
+                balCount++
+            }
+        }
+
+        val avgBal = if (balCount > 0) balSum.divide(java.math.BigDecimal(balCount), 2, java.math.RoundingMode.HALF_UP) else null
+
+        _uiState.value = _uiState.value.copy(
+            validationSummary = currentSummary.copy(
+                inspectedItems = updatedList,
+                validTransactionsCount = validCount,
+                excludedCount = excludedCount,
+                possibleDuplicateCount = duplicateCount,
+                totalAmountSum = totalAmount,
+                averageBalance = avgBal
             )
         )
     }
