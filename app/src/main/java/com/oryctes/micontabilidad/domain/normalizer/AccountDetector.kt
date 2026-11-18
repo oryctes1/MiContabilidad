@@ -216,11 +216,19 @@ object AccountDetector {
         if (!hasConcreteClues) return null
 
         // 1. ¿Existe otra cuenta existente que coincida con lo detectado?
+        // Prioridad 1: Coincidencia por últimos 4 dígitos (en campo last4 o en el alias)
+        // Prioridad 2: Misma entidad y tipo
+        // Prioridad 3: Misma entidad si solo hay una cuenta o coincidencia de palabras clave (ej. tarjeta importada a cuenta corriente de esa entidad)
         val otherExistingMatch = accounts.find { acc ->
-            acc.id != targetAccount.id && (
-                (!detected.last4.isNullOrBlank() && acc.last4 == detected.last4) ||
-                (detected.last4.isNullOrBlank() && acc.entity.equals(detected.entity, ignoreCase = true) && acc.type == detected.type)
+            acc.id != targetAccount.id && !detected.last4.isNullOrBlank() && (
+                acc.last4 == detected.last4 || acc.alias.contains(detected.last4)
             )
+        } ?: accounts.find { acc ->
+            acc.id != targetAccount.id && detected.last4.isNullOrBlank() &&
+                    acc.entity.equals(detected.entity, ignoreCase = true) && acc.type == detected.type
+        } ?: accounts.find { acc ->
+            acc.id != targetAccount.id && acc.entity.equals(detected.entity, ignoreCase = true) &&
+                    (acc.type == AccountType.CHECKING || accounts.count { it.entity.equals(detected.entity, ignoreCase = true) } == 1)
         }
 
         if (otherExistingMatch != null) {

@@ -637,6 +637,13 @@ fun MappingPreviewStep(
 
                     // Sugerencia si se detecta una cuenta diferente en la cabecera
                     if (detectedInfo != null && (selectedAccount == null || (selectedAccount.last4 != null && detectedInfo.last4 != null && selectedAccount.last4 != detectedInfo.last4) || !selectedAccount.entity.equals(detectedInfo.entity, ignoreCase = true))) {
+                        val matchingExisting = uiState.accounts.find { acc ->
+                            acc.id != selectedAccount?.id && (
+                                (!detectedInfo.last4.isNullOrBlank() && (acc.last4 == detectedInfo.last4 || acc.alias.contains(detectedInfo.last4))) ||
+                                (detectedInfo.last4.isNullOrBlank() && acc.entity.equals(detectedInfo.entity, ignoreCase = true) && acc.type == detectedInfo.type) ||
+                                (acc.entity.equals(detectedInfo.entity, ignoreCase = true) && acc.type == AccountType.CHECKING)
+                            )
+                        }
                         Spacer(modifier = Modifier.height(10.dp))
                         Surface(
                             shape = RoundedCornerShape(8.dp),
@@ -663,22 +670,31 @@ fun MappingPreviewStep(
                                     Spacer(modifier = Modifier.width(8.dp))
                                     Column {
                                         Text(
-                                            text = "Extracto detectado: ${detectedInfo.suggestedAlias}",
+                                            text = "Extracto detectado: ${matchingExisting?.alias ?: detectedInfo.suggestedAlias}",
                                             style = MaterialTheme.typography.bodySmall,
                                             fontWeight = FontWeight.Bold
                                         )
                                         Text(
-                                            text = "¿Pertenece a otra cuenta diferente?",
+                                            text = if (matchingExisting != null)
+                                                "¿Quieres usar '${matchingExisting.alias}' para este extracto?"
+                                            else
+                                                "¿Pertenece a otra cuenta diferente?",
                                             style = MaterialTheme.typography.labelSmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
                                     }
                                 }
                                 FilledTonalButton(
-                                    onClick = { showCreateAccountDialog = true },
+                                    onClick = {
+                                        if (matchingExisting != null) {
+                                            onSelectAccount(matchingExisting.id)
+                                        } else {
+                                            showCreateAccountDialog = true
+                                        }
+                                    },
                                     contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp)
                                 ) {
-                                    Text("Crear y usar")
+                                    Text(if (matchingExisting != null) "Usar" else "Crear y usar")
                                 }
                             }
                         }
@@ -2008,7 +2024,7 @@ fun AccountMismatchDialog(
             ) {
                 Text(
                     if (mismatch.matchingExistingAccount != null)
-                        "Cambiar a ${mismatch.matchingExistingAccount.alias}"
+                        "Usar '${mismatch.matchingExistingAccount.alias}'"
                     else
                         "Crear y usar '${mismatch.detectedAccountName}'"
                 )
