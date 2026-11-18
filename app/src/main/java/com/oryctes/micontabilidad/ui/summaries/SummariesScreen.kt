@@ -415,11 +415,36 @@ fun SummariesScreen(
 
                         Card(modifier = Modifier.fillMaxWidth()) {
                             Column(modifier = Modifier.padding(16.dp)) {
-                                Text(
-                                    text = "Evolución mensual de ${activeOption?.name ?: "Categoría"} (${uiState.selectedYear})",
-                                    style = MaterialTheme.typography.titleSmall,
-                                    fontWeight = FontWeight.SemiBold
-                                )
+                                val categoryDisplayName = when {
+                                    activeOption?.id == "HOGAR_GROUP" || activeOption?.name?.startsWith("Hogar", ignoreCase = true) == true -> "Hogar"
+                                    else -> activeOption?.name ?: "Categoría"
+                                }
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "Evolución mensual de $categoryDisplayName (${uiState.selectedYear})",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.SemiBold,
+                                        modifier = Modifier.weight(1f, fill = false)
+                                    )
+
+                                    if (uiState.selectedCategoryMonthlyAverage != null) {
+                                        val decimalFormatter = java.text.DecimalFormat("#,##0.00 €", java.text.DecimalFormatSymbols(java.util.Locale.GERMANY).apply {
+                                            groupingSeparator = '.'
+                                            decimalSeparator = ','
+                                        })
+                                        Text(
+                                            text = "Media: ${decimalFormatter.format(uiState.selectedCategoryMonthlyAverage)}",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
+                                }
                                 Spacer(modifier = Modifier.height(12.dp))
                                 CategoryMonthlyExpenseBarChart(
                                     monthlyAmounts = uiState.selectedCategoryMonthlyExpenses,

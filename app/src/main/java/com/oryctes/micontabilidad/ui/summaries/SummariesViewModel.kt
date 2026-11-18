@@ -60,7 +60,8 @@ data class SummariesUiState(
     val investmentHistoryPoints: List<com.oryctes.micontabilidad.ui.components.BalanceDataPoint> = emptyList(),
     val availableCategoryOptions: List<CategoryOption> = emptyList(),
     val selectedCategoryOptionId: String? = null,
-    val selectedCategoryMonthlyExpenses: List<BigDecimal> = List(12) { BigDecimal.ZERO }
+    val selectedCategoryMonthlyExpenses: List<BigDecimal> = List(12) { BigDecimal.ZERO },
+    val selectedCategoryMonthlyAverage: BigDecimal? = null
 )
 
 private data class DataQuad<A, B, C, D>(val first: A, val second: B, val third: C, val fourth: D)
@@ -342,6 +343,14 @@ class SummariesViewModel(
             List(12) { BigDecimal.ZERO }
         }
 
+        // Calcular la media mensual del gasto/ingreso para los meses hasta los que hay datos de extractos
+        val maxMonthWithDataInYear = allYearTxs.maxOfOrNull { it.operationDate.monthValue } ?: 0
+        val selectedCategoryMonthlyAverage = if (maxMonthWithDataInYear > 0) {
+            val totalCategoryInPeriod = monthlyExpensesForSelectedCategory.take(maxMonthWithDataInYear)
+                .fold(BigDecimal.ZERO) { acc, b -> acc.add(b) }
+            totalCategoryInPeriod.divide(BigDecimal(maxMonthWithDataInYear), 2, java.math.RoundingMode.HALF_UP)
+        } else null
+
         SummariesUiState(
             selectedYear = sel.year,
             selectedMonth = sel.month,
@@ -356,7 +365,8 @@ class SummariesViewModel(
             investmentHistoryPoints = investmentHistoryPoints,
             availableCategoryOptions = options,
             selectedCategoryOptionId = activeCategoryOptionId,
-            selectedCategoryMonthlyExpenses = monthlyExpensesForSelectedCategory
+            selectedCategoryMonthlyExpenses = monthlyExpensesForSelectedCategory,
+            selectedCategoryMonthlyAverage = selectedCategoryMonthlyAverage
         )
     }.stateIn(
         scope = viewModelScope,

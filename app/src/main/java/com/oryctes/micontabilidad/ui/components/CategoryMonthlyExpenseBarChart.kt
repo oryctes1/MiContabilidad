@@ -64,12 +64,14 @@ fun CategoryMonthlyExpenseBarChart(
     }
 
     val animationProgress = remember { Animatable(0f) }
+    var selectedMonthIndex by remember { mutableStateOf<Int?>(null) }
+
+    // Al cambiar la categoría (monthlyAmounts o barColor), reiniciar selección de mes y animar
     LaunchedEffect(monthlyAmounts, barColor) {
+        selectedMonthIndex = null
         animationProgress.snapTo(0f)
         animationProgress.animateTo(1f, animationSpec = tween(durationMillis = 800))
     }
-
-    var selectedMonthIndex by remember { mutableStateOf<Int?>(null) }
 
     val decimalFormatter = remember {
         val symbols = DecimalFormatSymbols(Locale.GERMANY).apply {
@@ -100,7 +102,12 @@ fun CategoryMonthlyExpenseBarChart(
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(bottom = 6.dp),
+                    .padding(bottom = 6.dp)
+                    .pointerInput(Unit) {
+                        detectTapGestures(
+                            onTap = { selectedMonthIndex = null }
+                        )
+                    },
                 shape = RoundedCornerShape(10.dp),
                 color = MaterialTheme.colorScheme.primaryContainer
             ) {
@@ -189,6 +196,8 @@ fun CategoryMonthlyExpenseBarChart(
                                     val relativeX = offset.x - yAxisWidth
                                     val monthIdx = (relativeX / groupWidth).toInt().coerceIn(0, 11)
                                     selectedMonthIndex = if (selectedMonthIndex == monthIdx) null else monthIdx
+                                } else {
+                                    selectedMonthIndex = null
                                 }
                             }
                         )
