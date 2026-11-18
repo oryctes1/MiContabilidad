@@ -61,69 +61,37 @@ class DashboardViewModel(
         val regularBalanceSum = regularWithBalance.mapNotNull { it.lastBalance }
             .fold(BigDecimal.ZERO) { acc, b -> acc.add(b) }
 
-        // 2. Todos los productos de inversión (depósitos e inversiones)
-        val allInvestmentAccounts = allAccounts.filter {
-            it.type == com.oryctes.micontabilidad.domain.model.AccountType.DEPOSIT ||
-                    it.type == com.oryctes.micontabilidad.domain.model.AccountType.INVESTMENT
+        // 2. Productos de inversión y depósitos activos (no archivados)
+        val activeInvestmentAccounts = allAccounts.filter {
+            !it.isArchived && (
+                it.type == com.oryctes.micontabilidad.domain.model.AccountType.DEPOSIT ||
+                it.type == com.oryctes.micontabilidad.domain.model.AccountType.INVESTMENT
+            )
         }
 
-        // Para comprobar si las retiradas o ingresos ya están en los extractos:
-        val validTxs = allTxs.filter { it.reviewStatus != com.oryctes.micontabilidad.domain.model.ReviewStatus.DISCARDED }
-
-        // Listas para clasificar las inversiones activas a computar y las alertas
+        // Listas para clasificar las inversiones activas a computar
         val computedInvestments = mutableListOf<AccountWithBalance>()
         var adjustmentToTotalBalance = BigDecimal.ZERO
-        var hasOutdatedAlert = false
 
-        for (inv in allInvestmentAccounts) {
-            val amount = inv.initialAmount ?: BigDecimal.ZERO
+        for (inv in activeInvestmentAccounts) {
             val isExpired = inv.type == com.oryctes.micontabilidad.domain.model.AccountType.DEPOSIT &&
                     inv.endDate != null && !inv.endDate.isAfter(today)
 
             if (isExpired) {
-                // Inversión que ha vencido:
-                // Buscamos si existe un ingreso en los extractos con el importe exacto a partir de la fecha de vencimiento
-                val hasReturnInStatements = validTxs.any { tx ->
-                    tx.amount > BigDecimal.ZERO &&
-                            tx.amount.compareTo(amount) == 0 &&
-                            (inv.endDate == null || !tx.operationDate.isBefore(inv.endDate))
-                }
+                // Depósito vencido por fecha pero no archivado aún: no computa como depósito activo
+                continue
+            }
 
-                if (hasReturnInStatements) {
-                    // Ya está en los extractos: ya se computa en el saldo regular disponible, NO se computa como inversión
-                } else {
-                    // No se encuentra en los extractos aún:
-                    // Sigue contabilizándose como inversión y salta la advertencia
-                    computedInvestments.add(inv.withBalance(allTxs, valuations))
-                    hasOutdatedAlert = true
-                }
-            } else {
-                // Inversión vigente / activa:
-                // Se contabiliza en la cartera de inversiones
-                val invWithBalance = inv.withBalance(allTxs, valuations)
-                computedInvestments.add(invWithBalance)
+            // Inversión o depósito vigente / activo:
+            val invWithBalance = inv.withBalance(allTxs, valuations)
+            computedInvestments.add(invWithBalance)
 
-                // Los productos de inversión (INVESTMENT: planes de pensiones, fondos, acciones, inmovilizados)
-                // no computan en el saldo disponible estimado diario. Descontamos el importe invertido computado.
-                if (inv.type == com.oryctes.micontabilidad.domain.model.AccountType.INVESTMENT) {
-                    val invValue = invWithBalance.totalInvestedCapital ?: inv.initialAmount ?: BigDecimal.ZERO
-                    adjustmentToTotalBalance = adjustmentToTotalBalance.subtract(invValue)
-                } else {
-                    // Para depósitos bancarios vigentes:
-                    // Comprobamos si la retirada de apertura ya está en los extractos bancarios:
-                    val hasWithdrawalInStatements = validTxs.any { tx ->
-                        tx.amount < BigDecimal.ZERO &&
-                                tx.amount.abs().compareTo(amount) == 0 &&
-                                (inv.startDate == null || !tx.operationDate.isBefore(inv.startDate.minusDays(5)))
-                    }
-
-                    if (!hasWithdrawalInStatements) {
-                        // Si aún no aparece la retirada en los extractos, el saldo de la cuenta bancaria de origen
-                        // aún tiene ese dinero. Se descuenta del saldo total estimado para no duplicarlo y salta aviso.
-                        adjustmentToTotalBalance = adjustmentToTotalBalance.subtract(amount)
-                        hasOutdatedAlert = true
-                    }
-                }
+            // Los productos de inversión (INVESTMENT: planes de pensiones, fondos, acciones, inmovilizados)
+            // se muestran e informan en la sección de inversiones pero no forman parte del saldo disponible
+            // en cuentas corrientes y depósitos a la vista. Descontamos su valor del saldo disponible estimado.
+            if (inv.type == com.oryctes.micontabilidad.domain.model.AccountType.INVESTMENT) {
+                val invValue = invWithBalance.totalInvestedCapital ?: inv.initialAmount ?: BigDecimal.ZERO
+                adjustmentToTotalBalance = adjustmentToTotalBalance.subtract(invValue)
             }
         }
 
@@ -156,7 +124,7 @@ class DashboardViewModel(
             totalBalance = estimatedTotalBalance,
             totalInvestments = totalInvestments,
             investmentAccounts = computedInvestments,
-            hasOutdatedStatementsForInvestments = hasOutdatedAlert
+            hasOutdatedStatementsForInvestments = false
         )
     }.stateIn(
         scope = viewModelScope,
