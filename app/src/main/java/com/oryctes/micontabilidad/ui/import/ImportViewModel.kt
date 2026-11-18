@@ -95,16 +95,9 @@ class ImportViewModel(
             detected = _uiState.value.detectedAccountInfo,
             accounts = _uiState.value.accounts
         )
-        val isCard = currentTarget?.type == AccountType.CREDIT_CARD || currentTarget?.type == AccountType.DEBIT_CARD
-        val updatedMapping = if (isCard) {
-            _uiState.value.columnMapping.copy(invertAmountSign = true)
-        } else {
-            _uiState.value.columnMapping
-        }
         _uiState.value = _uiState.value.copy(
             selectedAccountId = accountId,
-            accountMismatch = mismatch,
-            columnMapping = updatedMapping
+            accountMismatch = mismatch
         )
     }
 
@@ -115,18 +108,10 @@ class ImportViewModel(
     fun applyDetectedAccount() {
         val mismatch = _uiState.value.accountMismatch ?: return
         if (mismatch.matchingExistingAccount != null) {
-            val isCard = mismatch.matchingExistingAccount.type == AccountType.CREDIT_CARD ||
-                    mismatch.matchingExistingAccount.type == AccountType.DEBIT_CARD
-            val updatedMapping = if (isCard) {
-                _uiState.value.columnMapping.copy(invertAmountSign = true)
-            } else {
-                _uiState.value.columnMapping
-            }
             _uiState.value = _uiState.value.copy(
                 selectedAccountId = mismatch.matchingExistingAccount.id,
                 accountMismatch = null,
-                showMismatchDialog = false,
-                columnMapping = updatedMapping
+                showMismatchDialog = false
             )
         } else {
             _uiState.value = _uiState.value.copy(
@@ -199,7 +184,7 @@ class ImportViewModel(
                         fileName.contains("mastercard", ignoreCase = true) ||
                         parsed.headers.any { it.contains("tarjeta", ignoreCase = true) || it.contains("visa", ignoreCase = true) }
 
-                val shouldInvert = profile?.mapping?.invertAmountSign ?: (isCardAccount || isCardDoc || inferredStructure.mapping.invertAmountSign)
+                val shouldInvert = profile?.mapping?.invertAmountSign ?: inferredStructure.mapping.invertAmountSign
 
                 val baseMapping = profile?.mapping ?: inferredStructure.mapping.copy(skipHeaderRows = previewStart)
                 val initialMapping = baseMapping.copy(invertAmountSign = shouldInvert)

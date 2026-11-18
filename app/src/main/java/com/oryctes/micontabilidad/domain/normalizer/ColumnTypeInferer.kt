@@ -258,6 +258,25 @@ object ColumnTypeInferer {
             h.contains("tarjeta") || h.contains("visa") || h.contains("mastercard")
         }
 
+        // Si es extracto de tarjeta, comprobar si los importes de muestra ya vienen en negativo o si son positivos.
+        // Solo invertimos el signo si las compras vienen en positivo (mayoría de valores positivos).
+        // Si ya vienen con signo negativo (-54.00 €), NO se invierte para no convertirlos en ingresos.
+        val shouldInvertSign = if (isCardHeader && amountCol >= 0) {
+            val sampleAmounts = testRows.mapNotNull { row ->
+                val cell = row.getOrNull(amountCol)
+                cell?.let { AmountNormalizer.parseAmount(it) ?: AmountNormalizer.extractAllAmounts(it).lastOrNull() }
+            }
+            val posCount = sampleAmounts.count { it > BigDecimal.ZERO }
+            val negCount = sampleAmounts.count { it < BigDecimal.ZERO }
+            if (sampleAmounts.isNotEmpty()) {
+                posCount > negCount
+            } else {
+                true
+            }
+        } else {
+            false
+        }
+
         val mapping = ColumnMapping(
             operationDateIndex = opDateCol,
             valueDateIndex = valDateCol,
@@ -267,7 +286,7 @@ object ColumnTypeInferer {
             debitIndex = debitCol,
             creditIndex = creditCol,
             balanceIndex = balanceCol,
-            invertAmountSign = isCardHeader,
+            invertAmountSign = shouldInvertSign,
             skipHeaderRows = dataStartIndex
         )
 
@@ -419,6 +438,12 @@ object ColumnTypeInferer {
             var duplicateReason: String? = null
 
             if (!isDoubtful && opDate != null && amount != null) {
+                // Generar hash MD5 del candidato compatible con la base de datos
+                val candidateRawData = "$opDate|$amount|${effectiveConcept.lowercase().trim()}"
+                val candidateMd5 = java.security.MessageDigest.getInstance("MD5")
+                    .digest(candidateRawData.toByteArray())
+                    .joinToString("") { "%02x".format(it) }
+
                 val candidateTx = com.oryctes.micontabilidad.domain.model.Transaction(
                     accountId = 0L,
                     operationDate = opDate,
@@ -426,13 +451,33 @@ object ColumnTypeInferer {
                     concept = effectiveConcept,
                     amount = amount,
                     balance = balance,
-                    normalizedHash = "$opDate|$amount|${effectiveConcept.lowercase().trim()}"
+                    normalizedHash = candidateMd5
                 )
 
-                // 1. Frente a la base de datos existente
-                if (existingTransactions.isNotEmpty() && DeduplicationEngine.isFuzzyDuplicate(candidateTx, existingTransactions)) {
-                    isPossibleDuplicate = true
-                    duplicateReason = "Coincide con apunte previo registrado de fecha próxima e igual importe"
+                // 1. Frente a la base de datos existente:
+                if (existingTransactions.isNotEmpty()) {
+                    val normCandidateConcept = DeduplicationEngine.normalizeConcept(effectiveConcept)
+                    
+                    // 1a. Coincidencia exacta (mismo hash MD5 o misma fecha, importe idéntico y concepto idéntico/contenido)
+                    val exactMatch = existingTransactions.find { existing ->
+                        existing.normalizedHash == candidateMd5 ||
+                        (existing.operationDate == opDate &&
+                         existing.amount.compareTo(amount) == 0 &&
+                         run {
+                             val normExisting = DeduplicationEngine.normalizeConcept(existing.concept)
+                             normExisting == normCandidateConcept ||
+                             normExisting.contains(normCandidateConcept) ||
+                             normCandidateConcept.contains(normExisting)
+                         })
+                    }
+
+                    if (exactMatch != null) {
+                        isPossibleDuplicate = true
+                        duplicateReason = "Duplicado idéntico ya registrado en la cuenta (${exactMatch.operationDate})"
+                    } else if (DeduplicationEngine.isFuzzyDuplicate(candidateTx, existingTransactions)) {
+                        isPossibleDuplicate = true
+                        duplicateReason = "Coincide con apunte previo registrado de fecha próxima e igual importe"
+                    }
                 }
 
                 // 2. Frente a movimientos previos dentro del mismo extracto analizado
