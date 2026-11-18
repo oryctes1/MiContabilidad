@@ -21,6 +21,7 @@ data class AccountsUiState(
     val closedInvestments: List<AccountWithBalance> = emptyList(),
     val activeInvestments: List<AccountWithBalance> = emptyList(),
     val totalInvestedAmount: java.math.BigDecimal = java.math.BigDecimal.ZERO,
+    val totalValuationAmount: java.math.BigDecimal = java.math.BigDecimal.ZERO,
     val valuationsByAccount: Map<Long, List<com.oryctes.micontabilidad.domain.model.InvestmentValuation>> = emptyMap(),
     val isEditing: Boolean = false,
     val selectedAccount: Account? = null
@@ -83,6 +84,10 @@ class AccountsViewModel(
             .mapNotNull { it.totalInvestedCapital ?: it.account.initialAmount }
             .fold(java.math.BigDecimal.ZERO) { acc, b -> acc.add(b) }
 
+        val totalValuation = activeInvestments
+            .mapNotNull { it.lastBalance ?: it.latestValuation?.value ?: it.totalInvestedCapital ?: it.account.initialAmount }
+            .fold(java.math.BigDecimal.ZERO) { acc, b -> acc.add(b) }
+
         // Cuentas visibles en Cuentas:
         // Solo cuentas bancarias / operativas (se excluyen depósitos e inversiones, que van en su apartado)
         val activeAccounts = allWithBalance.filter {
@@ -100,6 +105,7 @@ class AccountsViewModel(
             closedInvestments = closedInvestments,
             activeInvestments = activeInvestments,
             totalInvestedAmount = totalInvested,
+            totalValuationAmount = totalValuation,
             valuationsByAccount = valuations.groupBy { it.accountId }
         )
     }.stateIn(

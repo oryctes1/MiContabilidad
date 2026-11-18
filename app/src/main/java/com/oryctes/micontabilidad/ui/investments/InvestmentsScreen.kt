@@ -144,12 +144,23 @@ fun InvestmentsScreen(
                             color = MaterialTheme.colorScheme.onPrimaryContainer
                         )
                     }
-                    Text(
-                        text = "${uiState.activeInvestments.size} productos en vigor",
-                        style = MaterialTheme.typography.bodySmall,
-                        fontWeight = FontWeight.Medium,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
-                    )
+                    Column(
+                        horizontalAlignment = Alignment.End
+                    ) {
+                        Text(
+                            text = "${uiState.activeInvestments.size} productos en vigor",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = "Última valoración conocida: ${uiState.totalValuationAmount.toPlainString()} €",
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
                 }
             }
 
