@@ -115,7 +115,7 @@ fun CategoryDonutChart(
             modifier = Modifier.fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            for (cat in categories.take(6)) {
+            for (cat in categories) {
                 val color = runCatching { Color(android.graphics.Color.parseColor(cat.colorHex)) }
                     .getOrDefault(Color.Gray)
 
