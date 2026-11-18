@@ -248,13 +248,20 @@ class SummariesViewModel(
         val chartCategories = calculatedCategories.groupHogarAndUtilities()
 
         // Construir opciones de categorías para el carrusel de Desglose por Categoría:
-        // Categorías de Gasto: orden decreciente de gasto total anual.
-        // Categorías de Ingreso: al final, en orden decreciente de importe anual.
+        // Categorías de Gasto (y Bizum si tiene gastos): orden decreciente de gasto total anual.
+        // Las tres categorías de ingresos específicas ("Nóminas", "Intereses", "Otros ingresos", o cualquier INCOME excepto Bizum):
+        // estrictamente al final del carrusel, ordenadas de mayor a menor importe.
         val hasHogarOrUtility = dbCategories.any { isHogarOrUtility(it.name) }
         val hogarCat = dbCategories.find { it.name.trim().equals("hogar", ignoreCase = true) }
         val hogarColorHex = hogarCat?.colorHex ?: "#6D4C41"
 
-        // Calcular total anual de cada categoría
+        fun isDedicatedIncomeCategory(cat: com.oryctes.micontabilidad.domain.model.Category): Boolean {
+            val n = cat.name.trim().lowercase()
+            return n == "nóminas" || n == "nominas" || n == "intereses" || n == "otros ingresos" ||
+                   (cat.type == com.oryctes.micontabilidad.domain.model.CategoryType.INCOME && n != "bizum")
+        }
+
+        // Calcular total anual de cada categoría de gasto
         val expenseOptionsWithAmount = mutableListOf<Pair<CategoryOption, BigDecimal>>()
         if (hasHogarOrUtility) {
             val hogarYearTotal = yearExpenseTxs.filter { tx ->
@@ -264,7 +271,8 @@ class SummariesViewModel(
             expenseOptionsWithAmount.add(CategoryOption("HOGAR_GROUP", "Hogar (y suministros)", hogarColorHex) to hogarYearTotal)
         }
 
-        dbCategories.filter { it.type != com.oryctes.micontabilidad.domain.model.CategoryType.INCOME && !isHogarOrUtility(it.name) }.forEach { cat ->
+        // Categorías que NO son ingresos puros ni parte de hogar (incluye categorías de gasto habituales, ahorro y Bizum)
+        dbCategories.filter { !isDedicatedIncomeCategory(it) && !isHogarOrUtility(it.name) }.forEach { cat ->
             val catYearTotal = yearExpenseTxs.filter { it.categoryId == cat.id }
                 .fold(BigDecimal.ZERO) { acc, tx -> acc.add(tx.amount.abs()) }
             expenseOptionsWithAmount.add(CategoryOption("CAT_${cat.id}", cat.name, cat.colorHex) to catYearTotal)
@@ -279,9 +287,10 @@ class SummariesViewModel(
         // Ordenar categorías de gasto en orden decreciente de gasto anual
         val sortedExpenseOptions = expenseOptionsWithAmount.sortedByDescending { it.second }.map { it.first }
 
-        // Categorías de ingreso: calculamos el total de ingresos del año y ordenamos en orden decreciente
+        // Categorías de ingreso (Nóminas, Intereses, Otros ingresos):
+        // Se colocan al final del carrusel, ordenadas de mayor a menor cuantía total anual
         val yearIncomeTxs = allYearTxs.filter { it.amount > BigDecimal.ZERO }
-        val incomeCategories = dbCategories.filter { it.type == com.oryctes.micontabilidad.domain.model.CategoryType.INCOME }
+        val incomeCategories = dbCategories.filter { isDedicatedIncomeCategory(it) }
         val incomeOptionsWithAmount = incomeCategories.map { cat ->
             val catIncomeTotal = yearIncomeTxs.filter { it.categoryId == cat.id }
                 .fold(BigDecimal.ZERO) { acc, tx -> acc.add(tx.amount) }
@@ -302,7 +311,7 @@ class SummariesViewModel(
         val isSelectedOptionIncome = activeCategoryOptionId?.let { optId ->
             if (optId.startsWith("CAT_")) {
                 val catId = optId.removePrefix("CAT_").toLongOrNull()
-                categoryMap[catId]?.type == com.oryctes.micontabilidad.domain.model.CategoryType.INCOME
+                catId?.let { categoryMap[it] }?.let { isDedicatedIncomeCategory(it) } ?: false
             } else false
         } ?: false
 

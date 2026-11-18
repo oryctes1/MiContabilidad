@@ -385,11 +385,11 @@ fun SummariesScreen(
                     }
                 }
 
-                // Selector y evolución de Gastos por Categoría
+                // Selector y evolución por Categoría
                 if (uiState.availableCategoryOptions.isNotEmpty()) {
                     item {
                         Text(
-                            text = "Desglose de Gastos por Categoría",
+                            text = "Desglose por Categoría",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold
                         )
