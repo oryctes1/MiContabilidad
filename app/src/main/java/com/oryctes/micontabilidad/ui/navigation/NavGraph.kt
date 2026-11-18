@@ -93,6 +93,15 @@ fun NavGraph(
                         launchSingleTop = true
                         restoreState = false
                     }
+                },
+                onNavigateToImport = {
+                    navController.navigate(Screen.Import.route) {
+                        popUpTo(navController.graph.findStartDestination().id) {
+                            saveState = true
+                        }
+                        launchSingleTop = true
+                        restoreState = true
+                    }
                 }
             )
         }

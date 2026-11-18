@@ -26,6 +26,7 @@ import androidx.compose.material.icons.filled.CreditCard
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Unarchive
+import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilledTonalButton
@@ -77,6 +78,7 @@ import org.koin.androidx.compose.koinViewModel
 @Composable
 fun AccountsScreen(
     onNavigateToAccountTransactions: (Long) -> Unit = {},
+    onNavigateToImport: (() -> Unit)? = null,
     viewModel: AccountsViewModel = koinViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -89,7 +91,14 @@ fun AccountsScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Cuentas", fontWeight = FontWeight.Bold) }
+                title = { Text("Cuentas", fontWeight = FontWeight.Bold) },
+                actions = {
+                    if (onNavigateToImport != null) {
+                        IconButton(onClick = onNavigateToImport) {
+                            Icon(Icons.Default.UploadFile, contentDescription = "Importar")
+                        }
+                    }
+                }
             )
         },
         floatingActionButton = {

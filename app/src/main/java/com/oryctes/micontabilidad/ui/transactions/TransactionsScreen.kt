@@ -41,6 +41,8 @@ import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material.icons.filled.Unarchive
+import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
@@ -135,6 +137,11 @@ fun TransactionsScreen(
             TopAppBar(
                 title = { Text("Movimientos", fontWeight = FontWeight.Bold) },
                 actions = {
+                    if (onNavigateToImport != null) {
+                        IconButton(onClick = onNavigateToImport) {
+                            Icon(Icons.Default.UploadFile, contentDescription = "Importar")
+                        }
+                    }
                     // Icono para borrar movimientos por categoría o todos juntos
                     IconButton(
                         onClick = { showDeleteDialog = true }
