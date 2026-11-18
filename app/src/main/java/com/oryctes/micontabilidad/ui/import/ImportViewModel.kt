@@ -11,6 +11,7 @@ import com.oryctes.micontabilidad.domain.model.ImportProfile
 import com.oryctes.micontabilidad.domain.model.ImportResult
 import com.oryctes.micontabilidad.domain.normalizer.AccountDetector
 import com.oryctes.micontabilidad.domain.normalizer.AccountMismatchInfo
+import com.oryctes.micontabilidad.domain.normalizer.AmountNormalizer
 import com.oryctes.micontabilidad.domain.normalizer.ColumnTypeInferer
 import com.oryctes.micontabilidad.domain.normalizer.DetectedAccountInfo
 import com.oryctes.micontabilidad.domain.repository.AccountRepository
@@ -21,6 +22,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import java.math.BigDecimal
 
 enum class ImportStep {
     SELECT_FILE,
@@ -182,9 +184,27 @@ class ImportViewModel(
                         fileName.contains("tarjeta", ignoreCase = true) ||
                         fileName.contains("visa", ignoreCase = true) ||
                         fileName.contains("mastercard", ignoreCase = true) ||
-                        parsed.headers.any { it.contains("tarjeta", ignoreCase = true) || it.contains("visa", ignoreCase = true) }
+                        parsed.headers.any {
+                            val h = it.lowercase()
+                            h.contains("tarjeta") || h.contains("visa") || h.contains("mastercard") || h.contains("establecimiento")
+                        }
 
-                val shouldInvert = profile?.mapping?.invertAmountSign ?: inferredStructure.mapping.invertAmountSign
+                val shouldInvert = profile?.mapping?.invertAmountSign ?: run {
+                    if (inferredStructure.mapping.invertAmountSign) {
+                        true
+                    } else if (isCardAccount || isCardDoc) {
+                        // Si el documento o la cuenta son de tarjeta, comprobar si los datos de muestra vienen en positivo
+                        val sampleAmounts = allRowsList.drop(previewStart).take(20).mapNotNull { row ->
+                            val cell = row.getOrNull(inferredStructure.mapping.amountIndex)
+                            cell?.let { AmountNormalizer.parseAmount(it) ?: AmountNormalizer.extractAllAmounts(it).lastOrNull() }
+                        }
+                        val posCount = sampleAmounts.count { it > java.math.BigDecimal.ZERO }
+                        val negCount = sampleAmounts.count { it < java.math.BigDecimal.ZERO }
+                        if (sampleAmounts.isNotEmpty()) posCount > negCount else true
+                    } else {
+                        false
+                    }
+                }
 
                 val baseMapping = profile?.mapping ?: inferredStructure.mapping.copy(skipHeaderRows = previewStart)
                 val initialMapping = baseMapping.copy(invertAmountSign = shouldInvert)

@@ -252,26 +252,30 @@ object ColumnTypeInferer {
 
         val isCardHeader = effectiveHeaders.any {
             val h = it.lowercase()
-            h.contains("tarjeta") || h.contains("visa") || h.contains("mastercard") || h.contains("crédito") || h.contains("credito")
+            h.contains("tarjeta") || h.contains("visa") || h.contains("mastercard") ||
+            h.contains("crédito") || h.contains("credito") || h.contains("establecimiento")
         } || rawHeaders.any {
             val h = it.lowercase()
-            h.contains("tarjeta") || h.contains("visa") || h.contains("mastercard")
+            h.contains("tarjeta") || h.contains("visa") || h.contains("mastercard") || h.contains("establecimiento")
         }
 
-        // Si es extracto de tarjeta, comprobar si los importes de muestra ya vienen en negativo o si son positivos.
-        // Solo invertimos el signo si las compras vienen en positivo (mayoría de valores positivos).
-        // Si ya vienen con signo negativo (-54.00 €), NO se invierte para no convertirlos en ingresos.
-        val shouldInvertSign = if (isCardHeader && amountCol >= 0) {
+        // Comprobar los importes de muestra:
+        // Si es extracto de tarjeta O si no tiene columna de saldo y todos los importes son positivos
+        // (comportamiento típico de extractos de tarjetas/compras donde los gastos vienen en positivo).
+        val shouldInvertSign = if (amountCol >= 0) {
             val sampleAmounts = testRows.mapNotNull { row ->
                 val cell = row.getOrNull(amountCol)
                 cell?.let { AmountNormalizer.parseAmount(it) ?: AmountNormalizer.extractAllAmounts(it).lastOrNull() }
             }
             val posCount = sampleAmounts.count { it > BigDecimal.ZERO }
             val negCount = sampleAmounts.count { it < BigDecimal.ZERO }
-            if (sampleAmounts.isNotEmpty()) {
-                posCount > negCount
-            } else {
-                true
+            
+            when {
+                // Si es explícitamente tarjeta y las compras vienen en positivo (mayoría de positivos)
+                isCardHeader && sampleAmounts.isNotEmpty() -> posCount > negCount
+                // Si no tiene columna de saldo ni columnas debe/haber y el 100% de los importes son positivos
+                balanceCol < 0 && debitCol < 0 && creditCol < 0 && sampleAmounts.isNotEmpty() && posCount > 0 && negCount == 0 -> true
+                else -> false
             }
         } else {
             false
