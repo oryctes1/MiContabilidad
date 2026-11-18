@@ -63,23 +63,16 @@ fun SummariesScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("Informes y Estadísticas", fontWeight = FontWeight.Bold) }
-            )
-        }
-    ) { padding ->
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            // Selector de Año (solo visible para cuentas bancarias / todas las cuentas)
-            if (uiState.selectedInvestmentInfo == null) {
-                item {
+            Column {
+                TopAppBar(
+                    title = { Text("Informes y Estadísticas", fontWeight = FontWeight.Bold) }
+                )
+                // Selector de Año (solo visible para cuentas bancarias / todas las cuentas)
+                if (uiState.selectedInvestmentInfo == null) {
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -96,13 +89,13 @@ fun SummariesScreen(
                         }
                     }
                 }
-            }
 
-            // Selector de Cuenta
-            item {
+                // Selector de Cuenta (Carrusel horizontal fijo)
                 LazyRow(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
                 ) {
                     item {
                         FilterChip(
@@ -120,7 +113,15 @@ fun SummariesScreen(
                     }
                 }
             }
-
+        }
+    ) { padding ->
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .padding(horizontal = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
             // Si se ha seleccionado una inversión
             val invInfo = uiState.selectedInvestmentInfo
             if (invInfo != null) {
