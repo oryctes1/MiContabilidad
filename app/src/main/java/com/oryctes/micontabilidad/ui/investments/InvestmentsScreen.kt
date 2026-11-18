@@ -165,14 +165,20 @@ fun InvestmentsScreen(
                             color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
                         )
                         Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = "Última valoración:",
+                            style = MaterialTheme.typography.labelSmall,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.End,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+                        )
                         val pctText = if (profitLossPct != null) {
                             val sign = if (profitLossPct >= BigDecimal.ZERO) "+" else ""
                             " ($sign${profitLossPct.toPlainString()}%)"
                         } else ""
                         Text(
-                            text = "Última valoración: ${valuation.toPlainString()} €$pctText",
-                            style = MaterialTheme.typography.bodySmall,
-                            fontWeight = FontWeight.SemiBold,
+                            text = "${valuation.toPlainString()} €$pctText",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Bold,
                             textAlign = androidx.compose.ui.text.style.TextAlign.End,
                             color = MaterialTheme.colorScheme.primary
                         )
