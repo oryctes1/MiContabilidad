@@ -57,6 +57,8 @@ data class CreditCardReconciliation(
     val actualCardTransactionsCount: Int = 0,
     val actualCardTransactionsSum: BigDecimal = BigDecimal.ZERO, // Total gastos en tarjeta
     val pendingSettlementDifference: BigDecimal = BigDecimal.ZERO, // Desfase / pendiente de pago siguiente mes
+    val pendingNextSettlementSum: BigDecimal? = null,           // Gastos del ciclo actual pendientes de la próxima liquidación
+    val pendingNextSettlementCount: Int = 0,
     val hasCardAccountOrTransactions: Boolean = false,
     val isCardStatementsMissing: Boolean = false               // Si hay liquidaciones pero no hay extracto de tarjeta cargado
 )
@@ -315,6 +317,19 @@ class TransactionsViewModel(
         val settlementsCount = cardSettlements.size
         val settlementsSum = cardSettlements.fold(BigDecimal.ZERO) { acc, t -> acc.add(t.amount.abs()) }
 
+        // Gastos de tarjeta posteriores al día 27 del mes anterior (período en curso pendiente de liquidar)
+        val pendingNextTxs = if (isCaixaAccount) {
+            val now = LocalDate.now()
+            val previousMonth = now.minusMonths(1)
+            val cutoffDate = LocalDate.of(previousMonth.year, previousMonth.month, 27)
+            periodTxs.filter { tx ->
+                val isCardTx = (tx.isCreditCard || cardAccountIds.contains(tx.accountId)) && !cardSettlementRegex.containsMatchIn(tx.concept)
+                isCardTx && tx.operationDate.isAfter(cutoffDate) && !tx.operationDate.isAfter(now)
+            }
+        } else emptyList()
+        val pendingNextSum = if (isCaixaAccount) pendingNextTxs.fold(BigDecimal.ZERO) { acc, t -> acc.add(t.amount.abs()) } else null
+        val pendingNextCount = pendingNextTxs.size
+
         // Desfase / Pendiente de liquidar: suma de gastos con tarjeta menos suma de liquidaciones pagadas
         val pendingDifference = actualCardSum.subtract(settlementsSum)
         val isCardStatementsMissing = settlementsCount > 0 && actualCardCount == 0
@@ -326,6 +341,8 @@ class TransactionsViewModel(
             actualCardTransactionsCount = actualCardCount,
             actualCardTransactionsSum = actualCardSum,
             pendingSettlementDifference = pendingDifference,
+            pendingNextSettlementSum = pendingNextSum,
+            pendingNextSettlementCount = pendingNextCount,
             hasCardAccountOrTransactions = hasCardInfo,
             isCardStatementsMissing = isCardStatementsMissing
         )

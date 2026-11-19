@@ -705,24 +705,44 @@ fun TransactionsSummaryCard(
                                     modifier = Modifier.padding(vertical = 4.dp),
                                     color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
                                 )
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    val diff = recon.pendingSettlementDifference
-                                    val diffIsHigher = diff > BigDecimal.ZERO
-                                    Text(
-                                        text = if (diffIsHigher) "Desfase pendiente prox. mes:" else "Diferencia de liquidación:",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontWeight = FontWeight.SemiBold
-                                    )
-                                    Text(
-                                        text = (if (diffIsHigher) "+" else "") + "${diff.toPlainString()} €",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (diffIsHigher) WarningOrange else MaterialTheme.colorScheme.primary
-                                    )
+                                if (recon.pendingNextSettlementSum != null) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = "Pendiente próxima liquidación (${recon.pendingNextSettlementCount}):",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                        Text(
+                                            text = "-${recon.pendingNextSettlementSum.toPlainString()} €",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = WarningOrange
+                                        )
+                                    }
+                                } else {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        val diff = recon.pendingSettlementDifference
+                                        val diffIsHigher = diff > BigDecimal.ZERO
+                                        Text(
+                                            text = if (diffIsHigher) "Desfase pendiente prox. mes:" else "Diferencia de liquidación:",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                        Text(
+                                            text = (if (diffIsHigher) "+" else "") + "${diff.toPlainString()} €",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (diffIsHigher) WarningOrange else MaterialTheme.colorScheme.primary
+                                        )
+                                    }
                                 }
                             }
                         }
