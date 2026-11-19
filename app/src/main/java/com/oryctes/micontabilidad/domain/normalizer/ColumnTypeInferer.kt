@@ -462,7 +462,7 @@ object ColumnTypeInferer {
                 if (existingTransactions.isNotEmpty()) {
                     val normCandidateConcept = DeduplicationEngine.normalizeConcept(effectiveConcept)
                     
-                    // 1a. Coincidencia exacta (mismo hash MD5 o misma fecha, importe idéntico y concepto idéntico/contenido)
+                    // Coincidencia exacta: misma fecha exactamente, mismo importe exacto y concepto idéntico
                     val exactMatch = existingTransactions.find { existing ->
                         existing.normalizedHash == candidateMd5 ||
                         (existing.operationDate == opDate &&
@@ -478,32 +478,25 @@ object ColumnTypeInferer {
                     if (exactMatch != null) {
                         isPossibleDuplicate = true
                         duplicateReason = "Duplicado idéntico ya registrado en la cuenta (${exactMatch.operationDate})"
-                    } else if (DeduplicationEngine.isFuzzyDuplicate(candidateTx, existingTransactions)) {
-                        isPossibleDuplicate = true
-                        duplicateReason = "Coincide con apunte previo registrado de fecha próxima e igual importe"
                     }
                 }
 
-                // 2. Frente a movimientos previos dentro del mismo extracto analizado
+                // 2. Frente a movimientos previos dentro del mismo extracto analizado (misma fecha exactamente y mismo importe/concepto)
                 if (!isPossibleDuplicate) {
                     val duplicateInBatch = inspectedItems.find { prev ->
                         !prev.isDoubtful &&
                         prev.amount != null &&
                         prev.amount!!.compareTo(amount) == 0 &&
-                        prev.operationDate != null &&
-                        java.time.temporal.ChronoUnit.DAYS.between(
-                            minOf(prev.operationDate!!, opDate),
-                            maxOf(prev.operationDate!!, opDate)
-                        ) <= 3 &&
+                        prev.operationDate == opDate &&
                         (prev.concept.equals(rawConcept, ignoreCase = true) ||
                          DeduplicationEngine.calculateSimilarity(
                              DeduplicationEngine.normalizeConcept(prev.concept),
                              DeduplicationEngine.normalizeConcept(rawConcept)
-                         ) >= 0.55)
+                         ) >= 0.70)
                     }
                     if (duplicateInBatch != null) {
                         isPossibleDuplicate = true
-                        duplicateReason = "Mismo importe ($amount €) que apunte en fila ${duplicateInBatch.originalRowIndex + 1} (${duplicateInBatch.operationDate})"
+                        duplicateReason = "Mismo movimiento idéntico que fila ${duplicateInBatch.originalRowIndex + 1} (${duplicateInBatch.operationDate})"
                     }
                 }
             }

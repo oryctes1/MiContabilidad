@@ -274,8 +274,8 @@ class ImportRepositoryImpl(
                     notes = if (rawDetails.isNotBlank()) rawDetails else null
                 )
 
-                val isFuzzy = if (!isExactDuplicate) DeduplicationEngine.isFuzzyDuplicate(candidateTx, existingTxs) else false
-                val isDuplicate = isExactDuplicate || isFuzzy
+                // Los duplicados son exclusivamente los movimientos idénticos de la misma fecha exactamente
+                val isDuplicate = isExactDuplicate
 
                 val finalHash = if (isExactDuplicate) {
                     "${hash}_dup_${System.currentTimeMillis()}_$rowNum"
@@ -286,10 +286,6 @@ class ImportRepositoryImpl(
                 val finalNotes = when {
                     isExactDuplicate -> {
                         val baseNote = "Fila $rowNum: Coincide exactamente con apunte existente de fecha $opDate"
-                        if (rawDetails.isNotBlank()) "$baseNote | $rawDetails" else baseNote
-                    }
-                    isFuzzy -> {
-                        val baseNote = "Fila $rowNum: Posible duplicado difuso"
                         if (rawDetails.isNotBlank()) "$baseNote | $rawDetails" else baseNote
                     }
                     rawDetails.isNotBlank() -> rawDetails
@@ -518,9 +514,8 @@ class ImportRepositoryImpl(
                 notes = if (item.conceptDetails.isNotBlank()) item.conceptDetails else null
             )
 
-            val isFuzzy = if (!isExactDuplicate) DeduplicationEngine.isFuzzyDuplicate(candidateTx, existingTxs) else false
-            // Si el usuario ya aceptó explícitamente el duplicado o lo editó en la pantalla de validación previa, no se marca para revisión
-            val isDuplicate = (isExactDuplicate || isFuzzy) && !item.isDuplicateAccepted
+            // Los duplicados son exclusivamente los movimientos idénticos de la misma fecha exactamente
+            val isDuplicate = isExactDuplicate && !item.isDuplicateAccepted
 
             val finalHash = if (isExactDuplicate) {
                 "${hash}_dup_${System.currentTimeMillis()}_$rowNum"
@@ -531,10 +526,6 @@ class ImportRepositoryImpl(
             val finalNotes = when {
                 isExactDuplicate -> {
                     val baseNote = "Fila $rowNum: Coincide exactamente con apunte existente de fecha $opDate"
-                    if (item.conceptDetails.isNotBlank()) "$baseNote | ${item.conceptDetails}" else baseNote
-                }
-                isFuzzy -> {
-                    val baseNote = "Fila $rowNum: Posible duplicado difuso"
                     if (item.conceptDetails.isNotBlank()) "$baseNote | ${item.conceptDetails}" else baseNote
                 }
                 item.conceptDetails.isNotBlank() -> item.conceptDetails
