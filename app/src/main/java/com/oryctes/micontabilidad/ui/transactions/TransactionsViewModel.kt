@@ -270,19 +270,46 @@ class TransactionsViewModel(
         }
 
         // Gastos reales con tarjeta (apuntes individuales)
-        val actualCardTxs = periodTxs.filter {
-            (it.isCreditCard || cardAccountIds.contains(it.accountId)) && !cardSettlementRegex.containsMatchIn(it.concept)
+        // Para CaixaBank (cuenta con entity CaixaBank o alias que contiene Caixa):
+        // el periodo cerrado va desde el 22/11/2024 hasta el 27 del mes anterior al actual.
+        // Los gastos posteriores al día 27 del mes anterior (mes en curso) corresponden al periodo abierto/pendiente de liquidación.
+        val isCaixaAccount = selectedAccount?.entity?.contains("Caixa", ignoreCase = true) == true ||
+                selectedAccount?.alias?.contains("Caixa", ignoreCase = true) == true
+
+        val actualCardTxs = periodTxs.filter { tx ->
+            val isCardTx = (tx.isCreditCard || cardAccountIds.contains(tx.accountId)) && !cardSettlementRegex.containsMatchIn(tx.concept)
+            if (!isCardTx) return@filter false
+
+            if (isCaixaAccount) {
+                // Considerar gastos desde el 22/11/2024 hasta el día 27 del mes anterior a la fecha actual
+                val isAfterOrOnStart = !tx.operationDate.isBefore(LocalDate.of(2024, 11, 22))
+                val now = LocalDate.now()
+                val previousMonth = now.minusMonths(1)
+                val cutoffDate = LocalDate.of(previousMonth.year, previousMonth.month, 27)
+                isAfterOrOnStart && !tx.operationDate.isAfter(cutoffDate)
+            } else {
+                true
+            }
         }
         val actualCardCount = actualCardTxs.size
         val actualCardSum = actualCardTxs.fold(BigDecimal.ZERO) { acc, t -> acc.add(t.amount.abs()) }
 
         // Liquidaciones de tarjeta cargadas en la cuenta corriente (los cargos mensuales que pagan la tarjeta)
-        // Excepción solicitada: en CaixaBank, para la conciliación de tarjetas se ignora el cargo inicial de 306,32 € del 01/12/2024
+        // Excepción solicitada para CaixaBank: se omiten liquidaciones anteriores al 01/01/2025 (como el apunte de 306,32 € del 01/12/2024)
+        // y se consideran liquidaciones hasta el día 1 del mes actual si ya están registradas.
         val cardSettlements = periodTxs.filter { tx ->
             if (cardSettlementRegex.containsMatchIn(tx.concept)) {
-                val isCaixaBankInitialSettlement = tx.operationDate == java.time.LocalDate.of(2024, 12, 1) &&
-                        tx.amount.abs().compareTo(BigDecimal("306.32")) == 0
-                !isCaixaBankInitialSettlement
+                if (isCaixaAccount) {
+                    val isAfterOrOnStart = !tx.operationDate.isBefore(LocalDate.of(2025, 1, 1))
+                    val now = LocalDate.now()
+                    val currentMonthFirst = LocalDate.of(now.year, now.month, 1)
+                    val isBeforeOrOnCurrentFirst = !tx.operationDate.isAfter(currentMonthFirst)
+                    isAfterOrOnStart && isBeforeOrOnCurrentFirst
+                } else {
+                    val isCaixaBankInitialSettlement = tx.operationDate == java.time.LocalDate.of(2024, 12, 1) &&
+                            tx.amount.abs().compareTo(BigDecimal("306.32")) == 0
+                    !isCaixaBankInitialSettlement
+                }
             } else false
         }
         val settlementsCount = cardSettlements.size
