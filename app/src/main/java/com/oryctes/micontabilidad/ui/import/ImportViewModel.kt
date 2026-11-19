@@ -167,11 +167,27 @@ class ImportViewModel(
                     accounts = _uiState.value.accounts
                 )
 
-                // Si no había cuenta seleccionada pero se detecta una existente, la seleccionamos
-                val accountIdToSelect = if (currentTarget == null && mismatch?.matchingExistingAccount != null) {
+                // Si no había cuenta seleccionada o la que estaba seleccionada no coincide con la entidad del extracto,
+                // pero se detecta una cuenta existente (o la cuenta de la misma entidad), la preseleccionamos automáticamente
+                val accountIdToSelect = if (mismatch?.matchingExistingAccount != null) {
                     mismatch.matchingExistingAccount.id
+                } else if (currentTarget == null || (detected != null && detected.entity != "Banco" && detected.entity != "Mi Entidad" && !currentTarget.entity.equals(detected.entity, ignoreCase = true))) {
+                    val entityMatch = _uiState.value.accounts.find { it.entity.equals(detected?.entity, ignoreCase = true) }
+                    entityMatch?.id ?: _uiState.value.selectedAccountId
                 } else {
                     _uiState.value.selectedAccountId
+                }
+
+                // Si se cambió de cuenta automáticamente para coincidir con la entidad del extracto, recalcular el mismatch
+                val effectiveTarget = _uiState.value.accounts.find { it.id == accountIdToSelect } ?: currentTarget
+                val effectiveMismatch = if (effectiveTarget?.id != currentTarget?.id) {
+                    AccountDetector.checkAccountMismatch(
+                        targetAccount = effectiveTarget,
+                        detected = detected,
+                        accounts = _uiState.value.accounts
+                    )
+                } else {
+                    mismatch
                 }
 
                 val previewStart = if (inferredStructure.headerRowIndex >= 0) {
@@ -218,8 +234,8 @@ class ImportViewModel(
                     isAutoMapped = true,
                     selectedAccountId = accountIdToSelect,
                     detectedAccountInfo = detected,
-                    accountMismatch = mismatch,
-                    showMismatchDialog = mismatch != null,
+                    accountMismatch = effectiveMismatch,
+                    showMismatchDialog = effectiveMismatch != null,
                     step = ImportStep.MAPPING_PREVIEW
                 )
             } catch (e: Throwable) {

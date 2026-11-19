@@ -134,4 +134,46 @@ class AccountDetectorTest {
         assertEquals("BBVA Cuenta •••• 9999", mismatch!!.detectedAccountName)
         org.junit.Assert.assertNull(mismatch.matchingExistingAccount)
     }
+
+    @Test
+    fun testDetectCreditCardFileNameWithYearDoesNotTreatYearAsLast4() {
+        val fileName = "Tarjeta Caixa 2024.csv"
+        val headers = listOf("Fecha", "Establecimiento/concepto", "Estado", "Importe")
+        val sampleRows = listOf(
+            listOf("05/11/2026", "CIEMAT", "Resto", "3.40")
+        )
+
+        val detected = AccountDetector.detectFromDocument(fileName, headers, sampleRows)
+        assertNotNull(detected)
+        assertEquals("CaixaBank", detected!!.entity)
+        assertEquals(AccountType.CREDIT_CARD, detected.type)
+        // No debe inferir el año "2024" como los últimos 4 dígitos de la tarjeta
+        org.junit.Assert.assertNull(detected.last4)
+    }
+
+    @Test
+    fun testCheckAccountMismatchCreditCardForSameEntityCheckingAccountReturnsNull() {
+        // En CaixaBank (o ING), los extractos de tarjeta se asocian a la cuenta corriente principal
+        val caixaChecking = com.oryctes.micontabilidad.domain.model.Account(
+            id = 2,
+            alias = "CaixaBank Cuenta •••• 4217",
+            entity = "CaixaBank",
+            type = AccountType.CHECKING,
+            last4 = "4217"
+        )
+        val detectedCard = DetectedAccountInfo(
+            suggestedAlias = "CaixaBank Tarjeta",
+            entity = "CaixaBank",
+            type = AccountType.CREDIT_CARD,
+            last4 = null
+        )
+
+        val mismatch = AccountDetector.checkAccountMismatch(
+            targetAccount = caixaChecking,
+            detected = detectedCard,
+            accounts = listOf(caixaChecking)
+        )
+
+        org.junit.Assert.assertNull(mismatch)
+    }
 }

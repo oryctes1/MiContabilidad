@@ -152,9 +152,15 @@ object AccountDetector {
             if (cardMaskMatch != null) {
                 last4 = cardMaskMatch.groupValues[1]
             } else {
-                val last4Match = LAST4_REGEX.find(fileName)
-                if (last4Match != null) {
-                    last4 = last4Match.groupValues[1]
+                val last4Matches = LAST4_REGEX.findAll(fileName)
+                for (match in last4Matches) {
+                    val candidate = match.groupValues[1]
+                    val asInt = candidate.toIntOrNull()
+                    // Descartar años (ej. 1990..2035) que suelen estar presentes en nombres de archivo (Caixa 2024, etc.)
+                    if (asInt == null || asInt !in 1990..2035) {
+                        last4 = candidate
+                        break
+                    }
                 }
             }
         }
@@ -241,7 +247,36 @@ object AccountDetector {
             )
         }
 
-        // 2. Si no hay otra cuenta existente coincidente, ¿contradice lo detectado a la cuenta destino seleccionada?
+        // 2. Si el extracto y la cuenta destino son de la misma entidad:
+        // En la operativa habitual, los extractos de tarjeta (CREDIT_CARD) se incorporan a la cuenta corriente
+        // principal de dicha entidad (por ejemplo, tarjetas de CaixaBank asociadas a la cuenta CaixaBank ...4217,
+        // o tarjetas de ING asociadas a la cuenta ING). Si la entidad coincide y la cuenta destino es una cuenta corriente,
+        // NO se debe considerar mismatch por discrepancia de tipo (tarjeta vs corriente).
+        val sameEntity = detected.entity != "Banco" &&
+                detected.entity != "Mi Entidad" &&
+                targetAccount.entity.isNotBlank() &&
+                targetAccount.entity.equals(detected.entity, ignoreCase = true)
+
+        if (sameEntity) {
+            // Si la entidad coincide: solo hay mismatch si los 4 dígitos se conocen en ambos y son distintos
+            val last4Mismatch = !detected.last4.isNullOrBlank() &&
+                    !targetAccount.last4.isNullOrBlank() &&
+                    detected.last4 != targetAccount.last4
+
+            if (last4Mismatch) {
+                return AccountMismatchInfo(
+                    targetAccountId = targetAccount.id,
+                    targetAccountAlias = targetAccount.alias,
+                    detectedAccountName = detected.suggestedAlias,
+                    matchingExistingAccount = null,
+                    detectedInfo = detected
+                )
+            }
+            // Misma entidad y no hay contradicción de last4 -> NO hay mismatch
+            return null
+        }
+
+        // 3. Si no hay otra cuenta existente coincidente, ¿contradice lo detectado a la cuenta destino seleccionada?
         val last4Mismatch = !detected.last4.isNullOrBlank() &&
                 !targetAccount.last4.isNullOrBlank() &&
                 detected.last4 != targetAccount.last4
