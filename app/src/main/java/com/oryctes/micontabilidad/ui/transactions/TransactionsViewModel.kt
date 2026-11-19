@@ -276,9 +276,14 @@ class TransactionsViewModel(
         val actualCardCount = actualCardTxs.size
         val actualCardSum = actualCardTxs.fold(BigDecimal.ZERO) { acc, t -> acc.add(t.amount.abs()) }
 
-        // Liquidaciones de tarjeta cargadas en la cuenta corriente (los 11 cargos mensuales que pagan la tarjeta)
-        val cardSettlements = periodTxs.filter {
-            cardSettlementRegex.containsMatchIn(it.concept)
+        // Liquidaciones de tarjeta cargadas en la cuenta corriente (los cargos mensuales que pagan la tarjeta)
+        // Excepción solicitada: en CaixaBank, para la conciliación de tarjetas se ignora el cargo inicial de 306,32 € del 01/12/2024
+        val cardSettlements = periodTxs.filter { tx ->
+            if (cardSettlementRegex.containsMatchIn(tx.concept)) {
+                val isCaixaBankInitialSettlement = tx.operationDate == java.time.LocalDate.of(2024, 12, 1) &&
+                        tx.amount.abs().compareTo(BigDecimal("306.32")) == 0
+                !isCaixaBankInitialSettlement
+            } else false
         }
         val settlementsCount = cardSettlements.size
         val settlementsSum = cardSettlements.fold(BigDecimal.ZERO) { acc, t -> acc.add(t.amount.abs()) }
