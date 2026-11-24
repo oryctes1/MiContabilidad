@@ -275,8 +275,12 @@ class TransactionsViewModel(
         // Para CaixaBank (cuenta con entity CaixaBank o alias que contiene Caixa):
         // el periodo cerrado va desde el 22/11/2024 hasta el 27 del mes anterior al actual.
         // Los gastos posteriores al día 27 del mes anterior (mes en curso) corresponden al periodo abierto/pendiente de liquidación.
+        // Para ING (cuenta con entity ING o alias que contiene ING):
+        // el periodo cerrado va hasta el último día del mes anterior al actual (los gastos del mes actual se liquidan en el mes siguiente).
         val isCaixaAccount = selectedAccount?.entity?.contains("Caixa", ignoreCase = true) == true ||
                 selectedAccount?.alias?.contains("Caixa", ignoreCase = true) == true
+        val isIngAccount = selectedAccount?.entity?.contains("ING", ignoreCase = true) == true ||
+                selectedAccount?.alias?.contains("ING", ignoreCase = true) == true
 
         val actualCardTxs = periodTxs.filter { tx ->
             val isCardTx = (tx.isCreditCard || cardAccountIds.contains(tx.accountId)) && !cardSettlementRegex.containsMatchIn(tx.concept)
@@ -289,6 +293,11 @@ class TransactionsViewModel(
                 val previousMonth = now.minusMonths(1)
                 val cutoffDate = LocalDate.of(previousMonth.year, previousMonth.month, 27)
                 isAfterOrOnStart && !tx.operationDate.isAfter(cutoffDate)
+            } else if (isIngAccount) {
+                // Considerar gastos del periodo cerrado: hasta el último día del mes anterior al actual
+                val now = LocalDate.now()
+                val firstOfCurrentMonth = LocalDate.of(now.year, now.month, 1)
+                tx.operationDate.isBefore(firstOfCurrentMonth)
             } else {
                 true
             }
@@ -299,6 +308,7 @@ class TransactionsViewModel(
         // Liquidaciones de tarjeta cargadas en la cuenta corriente (los cargos mensuales que pagan la tarjeta)
         // Excepción solicitada para CaixaBank: se omiten liquidaciones anteriores al 01/01/2025 (como el apunte de 306,32 € del 01/12/2024)
         // y se consideran liquidaciones hasta el día 1 del mes actual si ya están registradas.
+        // Excepción solicitada para ING: se omite el cargo de 12/2023 por valor de 7,98 € (05/12/2023) por no corresponder a compras en el extracto importado.
         val cardSettlements = periodTxs.filter { tx ->
             if (cardSettlementRegex.containsMatchIn(tx.concept)) {
                 if (isCaixaAccount) {
@@ -307,17 +317,23 @@ class TransactionsViewModel(
                     val currentMonthFirst = LocalDate.of(now.year, now.month, 1)
                     val isBeforeOrOnCurrentFirst = !tx.operationDate.isAfter(currentMonthFirst)
                     isAfterOrOnStart && isBeforeOrOnCurrentFirst
+                } else if (isIngAccount) {
+                    val isIngInitialDec2023Settlement = tx.operationDate == LocalDate.of(2023, 12, 5) &&
+                            tx.amount.abs().compareTo(BigDecimal("7.98")) == 0
+                    !isIngInitialDec2023Settlement
                 } else {
                     val isCaixaBankInitialSettlement = tx.operationDate == java.time.LocalDate.of(2024, 12, 1) &&
                             tx.amount.abs().compareTo(BigDecimal("306.32")) == 0
-                    !isCaixaBankInitialSettlement
+                    val isIngInitialDec2023Settlement = tx.operationDate == LocalDate.of(2023, 12, 5) &&
+                            tx.amount.abs().compareTo(BigDecimal("7.98")) == 0
+                    !isCaixaBankInitialSettlement && !isIngInitialDec2023Settlement
                 }
             } else false
         }
         val settlementsCount = cardSettlements.size
         val settlementsSum = cardSettlements.fold(BigDecimal.ZERO) { acc, t -> acc.add(t.amount.abs()) }
 
-        // Gastos de tarjeta posteriores al día 27 del mes anterior (período en curso pendiente de liquidar)
+        // Gastos de tarjeta del período en curso pendientes de la próxima liquidación
         val pendingNextTxs = if (isCaixaAccount) {
             val now = LocalDate.now()
             val previousMonth = now.minusMonths(1)
@@ -326,8 +342,15 @@ class TransactionsViewModel(
                 val isCardTx = (tx.isCreditCard || cardAccountIds.contains(tx.accountId)) && !cardSettlementRegex.containsMatchIn(tx.concept)
                 isCardTx && tx.operationDate.isAfter(cutoffDate) && !tx.operationDate.isAfter(now)
             }
+        } else if (isIngAccount) {
+            val now = LocalDate.now()
+            val firstOfCurrentMonth = LocalDate.of(now.year, now.month, 1)
+            periodTxs.filter { tx ->
+                val isCardTx = (tx.isCreditCard || cardAccountIds.contains(tx.accountId)) && !cardSettlementRegex.containsMatchIn(tx.concept)
+                isCardTx && !tx.operationDate.isBefore(firstOfCurrentMonth) && !tx.operationDate.isAfter(now)
+            }
         } else emptyList()
-        val pendingNextSum = if (isCaixaAccount) pendingNextTxs.fold(BigDecimal.ZERO) { acc, t -> acc.add(t.amount.abs()) } else null
+        val pendingNextSum = if (isCaixaAccount || isIngAccount) pendingNextTxs.fold(BigDecimal.ZERO) { acc, t -> acc.add(t.amount.abs()) } else null
         val pendingNextCount = pendingNextTxs.size
 
         // Desfase / Pendiente de liquidar: suma de gastos con tarjeta menos suma de liquidaciones pagadas
